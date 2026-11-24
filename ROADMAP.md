@@ -77,7 +77,7 @@ and every shot also requires `"errors": []`. "Fly shot" adds `--eval="document.g
 
 ### P0
 
-**M-001 Harness: metrics, phone preset, printed eval** (perf-qa-dev) 🔶 in-progress
+**M-001 Harness: metrics, phone preset, printed eval** (perf-qa-dev) ✅ done 🔶 in-progress
 Why: every other ticket needs numbers and a phone view to be verifiable, and perf is the biggest unknown.
 - `shot.js --metrics` prints JSON with `calls`, `triangles`, `geometries`, `textures`, mean/p95 frame ms over 120 frames, shadow-caster count and `isMobile`.
   `window.__m2140={renderer,camera,controls,info()}` hook (loop region 2160-2181 only).
@@ -213,3 +213,20 @@ Carry-overs occupy regions that nobody else may touch: **M-001** (`tools/shot.js
 **Coordination:** M-007 must not edit car emissives (1383-1430). It posts its new bloom threshold for M-014 to respect. M-006 must not touch HUD CSS outside 121/130.
 Sprint exit: all tickets merged one at a time. After each merge, re-shoot orbit night, orbit dusk, fly and `--mobile` fly, all error-free. QA personas re-run their fly sessions.
 Sprint 3 (queued): M-016 + M-017 (gameplay-dev), M-004 (perf-qa-dev), and M-008/M-018 split once M-006 is in.
+
+## M-001 baseline (2026-11-24, perf-qa-dev)
+
+Measured on the pre-M-002 build. Re-measure on main before M-004 uses these as its target.
+
+`node tools/shot.js index.html <out> --wait=40000 --metrics [--mobile] [--eval="document.getElementById('fly').click()"]`, Night mood, 120 timed frames.
+Counts are for one full frame (shadow pass plus every composer pass, so `info.autoReset` is off for that frame). They are deterministic and are what later tickets diff against.
+Frame ms are SwiftShader on a shared 4-CPU host under heavy load from parallel agents (`hostLoad` = 1-min load avg before/after timing). Compare them only against runs at similar load.
+
+| View | calls | triangles | points | geometries | textures | programs | shadow casters | shadow map | isMobile | DPR | frame ms mean / p95 | hostLoad |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| desktop orbit 1280x800 | 545 | 6,347,656 | 25,347 | 312 | 16 | 31 | 137 | 4096² | false | 1 | 16,876 / 25,245 | ~8.6 |
+| desktop fly 1280x800 | 505 | 6,322,498 | 25,487 | 349 | 16 | 40 | 137 | 4096² | false | 1 | 36,045 / 66,559 | 37 → 11 |
+| mobile orbit 390x844 @3x | 385 | 3,718,924 | 17,682 | 233 | 16 | 31 | 137 | 2048² | true | 1.5 | 12,423 / 15,810 | 34 → 23 |
+
+Notes: the mobile tier still renders shadows (2048², 137 casters) and ~3.7 M triangles a frame, which is the M-004 target.
+`isMobile` is also true for any viewport narrower than 700 px on its short side, so the `--w=960 --h=600` shot in CLAUDE.md runs the mobile tier.

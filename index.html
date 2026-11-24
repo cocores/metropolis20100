@@ -2172,6 +2172,8 @@ function tick(){
   if(++frame===3) window.__ready=true;
   requestAnimationFrame(tick);
 }
+/* debug hook for tools/shot.js --metrics (read-only; no effect on rendering) */
+window.__m2140={renderer,camera,controls,scene,isMobile,DPR,info(){ let casters=0; scene.traverse(o=>{ if((o.isMesh||o.isPoints)&&o.castShadow) casters++; }); const r=renderer.info; return {calls:r.render.calls,triangles:r.render.triangles,points:r.render.points,lines:r.render.lines,geometries:r.memory.geometries,textures:r.memory.textures,programs:r.programs?r.programs.length:0,shadowCasters:casters,shadowMap:renderer.shadowMap.enabled,shadowMapSize:sun.shadow.mapSize.x,isMobile,dpr:renderer.getPixelRatio()}; }};
 tick();
 }
 function startBoot(){ try{ boot(); }catch(e){ console.error(e); if(window.__loadErr) window.__loadErr(e.message||String(e)); } }

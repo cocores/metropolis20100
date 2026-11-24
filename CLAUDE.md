@@ -19,9 +19,10 @@ The product north star ("the idea") lives in `ROADMAP.md` — read it before sta
 ## Verifying a change
 ```
 cd tools && npm install   # once; installs three@0.128.0 locally
-node tools/shot.js index.html tools/out/x.png --wait=25000 --w=960 --h=600
+node tools/shot.js index.html tools/out/x.png --wait=25000 --w=1280 --h=800   # short side <700px triggers the phone tier
 node tools/shot.js index.html tools/out/fly.png --wait=25000 --eval="document.getElementById('fly').click()"
 ```
+Add `--metrics` for draw calls/triangles/frame ms, `--mobile` for an iPhone preset (390x844, touch).
 Exit code is non-zero if the page logged JS errors. Software GL is slow (~45s); that's expected.
 Look at the PNG (Read tool) — a change isn't done until you've seen it render.
 
