@@ -154,7 +154,7 @@ body{background:var(--bg);color:var(--text);overflow:hidden;
   .toast{top:calc(env(safe-area-inset-top,0px) + 236px);} .toast b{font-size:24px;}
 }
 .bar{flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 24px);border-radius:24px;}
-#huntBtn{color:#ff3d5a;}
+#huntBtn{color:#ff3d5a;} #huntBtn[hidden]{display:none;}
 .hpwrap{display:flex;flex-direction:column;gap:5px;padding:8px 11px;border-radius:14px;background:var(--panel);border:1px solid var(--edge);
   backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);min-width:150px;}
 .hpwrap[hidden]{display:none;}
@@ -200,7 +200,7 @@ body.driving .title,body.driving .dock{display:none;}
   <span class="sep"></span>
   <button id="tour" aria-pressed="true">Orbit</button>
   <button id="fly">Fly a car</button>
-  <button id="huntBtn">Hunt rogue AI</button>
+  <button id="huntBtn" hidden>Hunt rogue AI</button>
 </div></div>
 <div id="hud" hidden>
   <div id="speedfx"></div><div id="hitfx"></div>
@@ -1982,6 +1982,7 @@ function drawHuntRadar(c,R,sc,rx,rz,fx,fz,p){
     c.fillStyle=r===hunt.lock?'#ffffff':'#ff2340'; c.beginPath(); c.arc(R+sx,R+sy,r.type==='drone'?3.4:2.8,0,Math.PI*2); c.fill(); }
 }
 function startHunt(){
+  if(!huntEnabled()) return;
   if(!drive.on) enterDrive();
   Object.assign(hunt,{on:true,hp:100,kills:0,cash:0,wave:1,heat:1,target:8,dead:false,lastDmg:-9,cool:0,spawnT:0.5,lock:null});
   document.body.classList.add('hunting'); huntBar.hidden=false; crossEl.hidden=false;
@@ -1998,7 +1999,12 @@ function stopHunt(){
   document.body.classList.remove('hunting'); huntBar.hidden=true; crossEl.hidden=true; lockEl.hidden=true; wreckEl.hidden=true; keysEl.textContent=KEYS_DEFAULT;
   hunt.dead=false;
 }
-document.getElementById('huntBtn').addEventListener('click',startHunt);
+/* Hunt is off-vision (M-003): only reachable via #hunt in the URL. */
+const huntBtn=document.getElementById('huntBtn');
+function huntEnabled(){ return location.hash==='#hunt'; }
+function syncHuntGate(){ huntBtn.hidden=!huntEnabled(); if(!huntEnabled()) stopHunt(); }
+syncHuntGate(); addEventListener('hashchange',syncHuntGate);
+huntBtn.addEventListener('click',startHunt);
 canvas.addEventListener('pointerdown',e=>{ if(drive.on&&hunt.on&&e.pointerType==='mouse') hunt.firing=true; });
 addEventListener('pointerup',e=>{ if(e.pointerType==='mouse') hunt.firing=false; });
 {
