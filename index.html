@@ -315,19 +315,21 @@ const uNight={value:1}, uTime={value:0};
 
 /* ---------- sky ---------- */
 const skyU={top:{value:new THREE.Color()},horizon:{value:new THREE.Color()},bottom:{value:new THREE.Color()},
-  sunColor:{value:new THREE.Color()},sunDir:{value:new THREE.Vector3(0,1,0)},sunSize:{value:1},stars:{value:0},aurora:{value:0},uTime};
+  sunColor:{value:new THREE.Color()},fogC:{value:new THREE.Color()},sunDir:{value:new THREE.Vector3(0,1,0)},sunSize:{value:1},stars:{value:0},aurora:{value:0},uTime};
 const skyMat=new THREE.ShaderMaterial({
   uniforms:skyU, side:THREE.BackSide, depthWrite:false, fog:false,
   vertexShader:`varying vec3 vDir; void main(){ vDir=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
   fragmentShader:`
-    uniform vec3 top,horizon,bottom,sunColor,sunDir; uniform float sunSize,stars,aurora,uTime;
+    uniform vec3 top,horizon,bottom,sunColor,sunDir,fogC; uniform float sunSize,stars,aurora,uTime;
     varying vec3 vDir;
     float h3(vec3 p){ return fract(sin(dot(p,vec3(12.9898,78.233,37.719)))*43758.5453); }
     void main(){
       vec3 d=normalize(vDir); float h=d.y;
       vec3 col=h>0.0?mix(horizon,top,pow(smoothstep(0.0,1.0,h),0.5)):mix(horizon,bottom,smoothstep(0.0,0.2,-h));
+      float fh=smoothstep(-0.02,0.16,h);
+      col=mix(fogC,col,fh*fh);
       float s=max(dot(d,normalize(sunDir)),0.0);
-      col+=sunColor*(pow(s,900.0)*6.0*sunSize+pow(s,14.0)*0.45+pow(s,3.0)*0.14);
+      col+=sunColor*(pow(s,900.0)*6.0*sunSize+(pow(s,14.0)*0.45+pow(s,3.0)*0.14)*fh);
       float a=atan(d.z,d.x);
       float band=smoothstep(0.06,0.22,h)*smoothstep(0.55,0.25,h);
       float wave=0.5+0.5*sin(a*5.0+uTime*0.05+sin(a*11.0-uTime*0.08)*1.3);
@@ -335,6 +337,7 @@ const skyMat=new THREE.ShaderMaterial({
       vec3 q=floor(d*520.0);
       col+=vec3(step(0.9978,h3(q))*smoothstep(0.04,0.35,h)*stars*(0.5+0.5*h3(q+3.1)));
       gl_FragColor=vec4(col,1.0);
+      #include <encodings_fragment>
     }`
 });
 const sky=new THREE.Mesh(new THREE.SphereGeometry(9500,48,24),skyMat); sky.renderOrder=-1; scene.add(sky);
@@ -362,13 +365,14 @@ const glow=makeGlow();
 
 /* ---------- city material: LED windows + neon trim ---------- */
 const cityMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.6,metalness:0.15});
+cityMat.extensions={derivatives:true}; // fwidth() for distance-filtered windows
 cityMat.onBeforeCompile=(sh)=>{
   sh.uniforms.uNight=uNight; sh.uniforms.uTime=uTime;
   sh.vertexShader=sh.vertexShader
     .replace('#include <common>',`#include <common>
       attribute vec3 aNeon; attribute float aStyle;
       varying vec3 vWPos; varying vec3 vWNorm; varying vec3 vNeon; varying float vStyle;
-      varying vec2 vLX; varying vec2 vHalf; varying vec3 vLN; varying float vTop;`)
+      varying vec2 vLX; varying vec2 vHalf; varying vec3 vLN; varying float vTop; varying float vHero;`)
     .replace('#include <begin_vertex>',`#include <begin_vertex>
       vec4 cwp=vec4(transformed,1.0); vec3 cwn=objectNormal; vec3 csc=vec3(1.0);
       #ifdef USE_INSTANCING
@@ -376,13 +380,15 @@ cityMat.onBeforeCompile=(sh)=>{
         csc=vec3(length(instanceMatrix[0].xyz),length(instanceMatrix[1].xyz),length(instanceMatrix[2].xyz));
       #endif
       cwp=modelMatrix*cwp; vWPos=cwp.xyz; vWNorm=normalize(mat3(modelMatrix)*cwn);
-      vNeon=aNeon; vStyle=aStyle; vLX=position.xz*csc.xz; vHalf=csc.xz*0.5; vLN=objectNormal; vTop=(1.0-position.y)*csc.y;`);
+      vNeon=aNeon; vHero=step(9.5,aStyle); vStyle=aStyle-10.0*vHero; vLX=position.xz*csc.xz; vHalf=csc.xz*0.5; vLN=objectNormal; vTop=(1.0-position.y)*csc.y;`);
   sh.fragmentShader=sh.fragmentShader
     .replace('#include <common>',`#include <common>
       uniform float uNight; uniform float uTime;
       varying vec3 vWPos; varying vec3 vWNorm; varying vec3 vNeon; varying float vStyle;
-      varying vec2 vLX; varying vec2 vHalf; varying vec3 vLN; varying float vTop;
-      float ch21(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }`)
+      varying vec2 vLX; varying vec2 vHalf; varying vec3 vLN; varying float vTop; varying float vHero;
+      float ch21(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }
+      float cPI(float x,float a,float w){ return floor(x)*w+clamp(fract(x)-a,0.0,w); }
+      float cPls(float x,float a,float w,float f){ f=max(f,1e-3); return (cPI(x+0.5*f,a,w)-cPI(x-0.5*f,a,w))/f; }`)
     .replace('#include <color_fragment>',`#include <color_fragment>
       vec3 can=abs(vWNorm);
       float cRoof=step(0.6,can.y);
@@ -390,19 +396,28 @@ cityMat.onBeforeCompile=(sh)=>{
       float cH=dot(vWPos.xz,cTg);
       vec2 cCell=vec2(cH/2.6,vWPos.y/3.6);
       vec2 cId=floor(cCell); vec2 cF=fract(cCell);
-      float cWin=step(0.12,cF.x)*step(cF.x,0.88)*step(0.2,cF.y)*step(cF.y,0.88);
+      vec2 cFw=fwidth(cCell);
+      float cAx=smoothstep(0.12,0.35,cFw.x), cAy=smoothstep(0.35,0.7,cFw.y);
+      float cWin=cPls(cCell.x,0.12,0.76,cFw.x)*cPls(cCell.y,0.2,0.68,cFw.y);
       cWin*=(1.0-cRoof)*step(5.0,vWPos.y);
       float cAng=floor(atan(vWNorm.z,vWNorm.x)*1.27+0.5);
       float cR=ch21(cId+vec2(cAng*13.1,cAng*7.7));
       float cR2=ch21(cId.yx*1.37+3.1+cAng);
-      float cLit=step(cR,0.5);
+      float cTs=ch21(vHalf*1.37+vNeon.rg*7.0+cAng*0.31);
+      float cFl=ch21(vec2(cId.y*0.71+cTs*53.0,cTs*17.0+cAng*0.5));
+      float cMo=step(0.5,vStyle);
+      float cLit=mix(step(cR,0.5),step(cR,0.08+0.82*step(cFl,0.42)),cMo);
+      cLit=mix(cLit,mix(0.4,0.08+0.82*step(cFl,0.42),cMo),cAx);
+      cLit=mix(cLit,mix(0.5,0.42,cMo)*0.7,cAy);
+      cLit=max(cLit,vHero*mix(step(cR,0.8),0.8,max(cAx,cAy)));
       float eX=vHalf.x-abs(vLX.x), eZ=vHalf.y-abs(vLX.y);
       float eSide=abs(vLN.z)>0.5?eX:eZ;
-      float cEdge=(1.0-cRoof)*(1.0-step(0.9,eSide));
+      float cEdge=(1.0-cRoof)*clamp((0.9-eSide)/max(fwidth(eSide),1e-3)+0.5,0.0,1.0);
+      float cFarV=smoothstep(300.0,1400.0,length(vViewPosition));
       float cCrown=(1.0-cRoof)*(1.0-step(1.1,vTop));
       float cRim=cRoof*(1.0-step(1.0,min(eX,eZ)));
-      float cBand=(1.0-cRoof)*(1.0-step(0.045,fract(vWPos.y/26.0)))*step(1.5,vStyle);
-      float cNeon=step(0.5,vStyle)*max(max(cEdge,cCrown),max(cRim,cBand));
+      float cBand=(1.0-cRoof)*cPls(vWPos.y/26.0,0.0,0.045,fwidth(vWPos.y/26.0))*step(1.5,vStyle);
+      float cNeon=step(0.5,vStyle)*max(max(cEdge*(1.0-0.95*cFarV*(1.0-vHero)),cCrown),max(cRim,cBand));
       cWin*=1.0-cNeon;
       float cShop=(1.0-cRoof)*step(0.6,vWPos.y)*(1.0-step(4.0,vWPos.y));
       float cSign=(1.0-cRoof)*step(4.25,vWPos.y)*(1.0-step(5.05,vWPos.y));
@@ -442,17 +457,20 @@ cityMat.onBeforeCompile=(sh)=>{
       diffuseColor.rgb*=1.0-(1.0-cRoof)*(1.0-step(0.001,cWin))*0.12*step(0.55,cSt)*smoothstep(0.0,1.0,fract(vWPos.y/3.6))*cOld;
       float cRec=cWin*cNear*(step(0.8,cF.y)*0.45+(1.0-step(0.2,cF.x))*0.35);
       diffuseColor.rgb*=1.0-cRec;
-      diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(0.85,1.05,1.2),cWin*step(0.5,ch21(cId*1.9+7.0)));`)
+      diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(0.85,1.05,1.2),cWin*step(0.5,ch21(cId*1.9+7.0))*(1.0-cAx));`)
     .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor,0.06,cWin);')
     .replace('#include <metalnessmap_fragment>','#include <metalnessmap_fragment>\nmetalnessFactor=mix(metalnessFactor,0.8,cWin);')
     .replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
-      vec3 cLed=mix(vec3(0.72,0.88,1.0),vec3(1.0,0.82,0.6),step(0.62,cR2));
-      cLed=mix(cLed,vNeon,0.35*step(0.5,vStyle)*step(0.8,cR2));
-      float cDim=0.45+0.55*ch21(cId*0.73+11.0);
-      float cInt=0.55+0.7*cF.y;
-      float cBlind=mix(1.0,0.55+0.45*step(0.45,fract(cF.y*7.0)),step(0.2,cR2)*step(cR2,0.36));
-      float cSil=1.0-0.85*step(cR2,0.07)*step(abs(cF.x-0.5-0.15*sin(cR*40.0)),0.11)*step(cF.y,0.62);
-      totalEmissiveRadiance+=cWin*cLit*cDim*uNight*cLed*2.4*cInt*cBlind*cSil;
+      float cKey=mix(cR2,fract(cTs*7.31),cMo);
+      vec3 cLed=mix(vec3(0.72,0.88,1.0),vec3(1.0,0.82,0.6),step(0.62,cKey));
+      cLed=mix(cLed,vNeon,0.35*cMo*step(0.8,cKey));
+      cLed=mix(cLed,vec3(0.83,0.86,0.85),cAx*(1.0-cMo));
+      float cDim=0.45+0.55*mix(ch21(cId*0.73+11.0),ch21(vec2(cId.y,cTs*29.0)),0.6*cMo);
+      cDim=mix(cDim,0.72,cAx);
+      float cInt=mix(0.55+0.7*cF.y,0.9,cAy);
+      float cBlind=mix(mix(1.0,0.55+0.45*step(0.45,fract(cF.y*7.0)),step(0.2,cR2)*step(cR2,0.36)),1.0,cAx);
+      float cSil=mix(1.0-0.85*step(cR2,0.07)*step(abs(cF.x-0.5-0.15*sin(cR*40.0)),0.11)*step(cF.y,0.62),1.0,cAx);
+      totalEmissiveRadiance+=cWin*cLit*cDim*uNight*cLed*1.05*cInt*cBlind*cSil;
       vec3 cShopC=clamp(abs(mod(cShopR*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);
       totalEmissiveRadiance+=cShop*cMull*(0.35+uNight)*mix(vec3(1.0,0.85,0.65),vec3(0.75,0.9,1.0),step(0.5,cShopR))*1.3;
       totalEmissiveRadiance+=cSign*step(0.25,cShopR)*cShopC*(0.8+2.4*uNight);
@@ -463,12 +481,13 @@ cityMat.onBeforeCompile=(sh)=>{
         float lpS=exp(-lsx*lsx/30.0)*exp(-pow(max(0.0,lsz-4.5),2.0)/8.0);
         float lh=(1.0-smoothstep(2.0,16.0,vWPos.y))*(1.0-cRoof)*(1.0-step(330.0,abs(vWPos.x)));
         totalEmissiveRadiance+=(diffuseColor.rgb*0.9+vec3(0.05,0.06,0.07))*vec3(0.85,0.93,1.0)*max(lpA,lpS)*lh*uNight*1.6; }
-      float cTv=cWin*cLit*step(0.9,cR2)*(1.0-step(0.95,cR2));
+      float cTv=cWin*cLit*step(0.9,cR2)*(1.0-step(0.95,cR2))*(1.0-cAx);
       totalEmissiveRadiance+=cTv*uNight*vec3(0.3,0.5,1.0)*(0.6+0.6*sin(uTime*7.0+cR*30.0)*sin(uTime*3.1+cR*11.0));
       float cDoor=cShop*(1.0-step(0.9,abs(fract(cH/9.0)-0.5)*9.0))*step(0.45,cShopR);
       totalEmissiveRadiance+=cDoor*vec3(1.0,0.85,0.6)*(0.4+1.2*uNight);
       float cPulse=0.82+0.18*sin(uTime*1.8+vWPos.y*0.04+vWPos.x*0.01);
-      totalEmissiveRadiance+=cNeon*vNeon*(0.5+3.2*uNight)*cPulse;
+      totalEmissiveRadiance+=cNeon*vNeon*(0.5+3.2*uNight)*cPulse*(1.0+0.8*vHero);
+      totalEmissiveRadiance+=vHero*(1.0-cRoof)*(1.0-cWin)*(1.0-cNeon)*mix(diffuseColor.rgb,vNeon,0.45)*(0.12+0.5*uNight)*(0.55+0.45*smoothstep(0.0,700.0,vWPos.y));
       float cStream=cEdge*step(0.5,vStyle)*smoothstep(0.93,1.0,fract(vWPos.y/90.0-uTime*0.35+ch21(floor(vWPos.xz/40.0))));
       totalEmissiveRadiance+=cStream*vec3(0.9,1.0,1.0)*(0.6+2.6*uNight);`);
 };
@@ -549,8 +568,8 @@ function addTower(cx,cz,w,d,h,low){
       const sh=h*rr(0.15,0.28); SPIRES.push({x:cx,z:cz,y:h,r:s*0.09+0.6,h:sh}); topY=h+sh;
     }
     if(rand()<0.5) RINGS.push({x:cx,z:cz,y:h*rr(0.55,0.92),r:base*rr(0.8,1.15),c:neon});
-    if(rand()<0.22) BEAMS.push({x:cx,y:topY,z:cz,c:neon});
-    TALL.push({x:cx,z:cz,h,s:Math.min(w,d)});
+    rand(); // was the 22% beam roll; kept so the RNG stream (and the city) is unchanged. Beams are picked by height below.
+    TALL.push({x:cx,z:cz,h,s:Math.min(w,d),top:topY,c:neon});
   } else if(!low&&h>100&&rand()<0.7){
     let y=0,cw=w,cd=d; const tiers=2+Math.floor(rand()*2);
     for(let t=0;t<tiers;t++){
@@ -581,14 +600,14 @@ function heightAt(x,z){
 const EXCL=[{x0:-75,x1:0,z0:-210,z1:-120},{x0:-150,x1:-75,z0:-1236,z1:-1146}];
 { // midtown twisting megatower
   const n=84, c=C(0xd8e0ea), neon=C(0x22e6ff);
-  for(let i=0;i<n;i++){ const u=i/n, s=62*(1-u*0.55); B.push({x:-37.5,z:-165,w:s,d:s,y0:i*10,h:9.3,c,neon,style:1,rot:u*2.4}); }
+  for(let i=0;i<n;i++){ const u=i/n, s=62*(1-u*0.55); B.push({x:-37.5,z:-165,w:s,d:s,y0:i*10,h:9.3,c,neon,style:11,rot:u*2.4}); }
   SPIRES.push({x:-37.5,z:-165,y:840,r:3,h:150}); WARN.push(-37.5,992,-165);
   [300,520,700].forEach((y,i)=>RINGS.push({x:-37.5,z:-165,y,r:62*(1-y/840*0.55)*1.25,c:NEON[i%3===0?0:i%3===1?1:2]}));
   BEAMS.push({x:-37.5,y:990,z:-165,c:C(0x22e6ff)});
 }
 { // downtown crystal needle
   const c=C(0x3d5066), neon=C(0xff2bd6);
-  [[60,60,0,50],[50,50,50,560],[36,36,560,640],[24,24,640,680]].forEach(t=>B.push({x:-112.5,z:-1191,w:t[0],d:t[1],y0:t[2],h:t[3]-t[2],c,neon,style:2,rot:0.785}));
+  [[60,60,0,50],[50,50,50,560],[36,36,560,640],[24,24,640,680]].forEach(t=>B.push({x:-112.5,z:-1191,w:t[0],d:t[1],y0:t[2],h:t[3]-t[2],c,neon,style:12,rot:0.785}));
   SPIRES.push({x:-112.5,z:-1191,y:680,r:2.4,h:160}); WARN.push(-112.5,842,-1191);
   RINGS.push({x:-112.5,z:-1191,y:420,r:58,c:neon});
   BEAMS.push({x:-112.5,y:840,z:-1191,c:neon});
@@ -998,13 +1017,21 @@ const boardFS=`uniform float uTime,uNight,uSeed; uniform vec3 uA,uB;
 
 /* ---------- searchlight beams ---------- */
 const beamMeshes=[];
+{ // two hero beams (already in BEAMS) + the 4 tallest supertalls, spaced apart; deterministic, no rand()
+  const pickd=[...TALL].filter(t=>t.top>230).sort((a,b)=>b.top-a.top||a.x-b.x||a.z-b.z);
+  for(const t of pickd){
+    if(BEAMS.length>=6) break;
+    if(BEAMS.some(b=>Math.hypot(b.x-t.x,b.z-t.z)<260)) continue;
+    BEAMS.push({x:t.x,y:t.top,z:t.z,c:t.c,a:0.075});
+  }
+}
 {
-  const H=1100, g=new THREE.CylinderGeometry(30,1.5,H,24,1,true); g.translate(0,H/2,0);
+  const H=1100, g=new THREE.CylinderGeometry(22,1.5,H,24,1,true); g.translate(0,H/2,0);
   BEAMS.forEach((b,i)=>{
-    const u={uC:{value:b.c.clone()},uNight,uH:{value:H}};
+    const u={uC:{value:b.c.clone()},uNight,uH:{value:H},uA:{value:b.a||0.11}};
     const mat=new THREE.ShaderMaterial({uniforms:u,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,
       vertexShader:`varying float vH; void main(){ vH=position.y; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
-      fragmentShader:`uniform vec3 uC; uniform float uNight,uH; varying float vH; void main(){ float a=pow(1.0-vH/uH,1.8)*0.16*uNight; gl_FragColor=vec4(uC*a,a);}`});
+      fragmentShader:`uniform vec3 uC; uniform float uNight,uH,uA; varying float vH; void main(){ float a=pow(1.0-vH/uH,1.8)*uA*uNight; gl_FragColor=vec4(uC*a,a);}`});
     const m=new THREE.Mesh(g,mat); m.position.set(b.x,b.y,b.z); m.frustumCulled=false; scene.add(m); beamMeshes.push({m,ph:i*1.7});
   });
 }
@@ -2082,7 +2109,7 @@ composer.addPass(new THREE.ShaderPass(THREE.GammaCorrectionShader));
 const RAW={
   day:  {el:52,az:2.35,sunCol:0xfff4e6,sunI:2.1,hemiSky:0xc8e4f4,hemiGround:0x7a7482,hemiI:0.8,top:0x2f78d0,hor:0xd6eef4,bot:0x9aa9b5,fog:0xc6dde6,fogD:0.00015,night:0,exp:1.0,bloomS:0.22,bloomT:0.9,bloomR:0.45,sunGlow:0xfff3d6,sunSize:1,stars:0,lamp:0,aur:0},
   dusk: {el:4,az:-1.95,sunCol:0xff8a7a,sunI:1.6,hemiSky:0xff9ab8,hemiGround:0x3a2d48,hemiI:0.6,top:0x1c1650,hor:0xff6a7a,bot:0x221828,fog:0x8a5f86,fogD:0.0002,night:0.8,exp:1.05,bloomS:0.75,bloomT:0.72,bloomR:0.55,sunGlow:0xff7a8a,sunSize:1,stars:0.25,lamp:0.85,aur:0.3},
-  night:{el:36,az:-0.8,sunCol:0xa8b0ff,sunI:0.5,hemiSky:0x3a2e6a,hemiGround:0x221c32,hemiI:0.58,top:0x030212,hor:0x2a1446,bot:0x07050c,fog:0x170f2c,fogD:0.00024,night:1,exp:1.2,bloomS:1.15,bloomT:0.58,bloomR:0.6,sunGlow:0xc8bcff,sunSize:0.25,stars:1,lamp:1,aur:1}
+  night:{el:36,az:-0.8,sunCol:0xa8b0ff,sunI:0.2,hemiSky:0x3a2e6a,hemiGround:0x221c32,hemiI:0.3,top:0x030212,hor:0x2a1446,bot:0x07050c,fog:0x170f2c,fogD:0.00024,night:1,exp:1.2,bloomS:0.8,bloomT:0.68,bloomR:0.5,sunGlow:0xc8bcff,sunSize:0.25,stars:1,lamp:1,aur:1}
 };
 const P={}; const COLS=['sunCol','hemiSky','hemiGround','top','hor','bot','fog','sunGlow'];
 for(const k in RAW){ P[k]={}; for(const f in RAW[k]) P[k][f]=COLS.includes(f)?C(RAW[k][f]):RAW[k][f]; }
@@ -2095,7 +2122,7 @@ function apply(){
   sun.position.copy(sun.target.position).addScaledVector(sunDir,3800);
   sun.color.copy(cur.sunCol); sun.intensity=cur.sunI;
   hemi.color.copy(cur.hemiSky); hemi.groundColor.copy(cur.hemiGround); hemi.intensity=cur.hemiI;
-  skyU.top.value.copy(cur.top); skyU.horizon.value.copy(cur.hor); skyU.bottom.value.copy(cur.bot);
+  skyU.top.value.copy(cur.top); skyU.fogC.value.copy(cur.fog); skyU.horizon.value.copy(cur.hor); skyU.bottom.value.copy(cur.bot);
   skyU.sunDir.value.copy(sunDir); skyU.sunColor.value.copy(cur.sunGlow); skyU.sunSize.value=cur.sunSize; skyU.stars.value=cur.stars; skyU.aurora.value=cur.aur;
   scene.fog.color.copy(cur.fog); scene.fog.density=cur.fogD;
   uNight.value=cur.night; renderer.toneMappingExposure=cur.exp;
