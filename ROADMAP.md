@@ -142,7 +142,7 @@ Why: the 6-year-old can't read the chips and the 75-year-old can't see them, yet
 - The HUD mood button reads "Lighting: Night ▸" (an action, not a state). The orbit hint is ≥ 15 px on a dark backing.
 - Shots: the default orbit at 390x844 has a one-row dock (or a clear two-row layout with Fly prominent). In the orbit shot only the active mood looks selected.
 
-**M-010 Honest loader** (perf-qa-dev) · Sprint 2
+**M-010 Honest loader** (perf-qa-dev) · Sprint 2 ✅ done
 Why: the 1910→2140 story is the idea's best moment. It should explain itself, survive reduced motion, and not tax repeat visits. (Q6-05, Q75-05, Q75-06, Q75-12, Q40 session)
 - Region: loader CSS 47-106, reduced-motion rule 182, head JS 185-191, loader HTML 222-269.
 - The first visit plays the full sequence. Repeat visits (per-viewer `localStorage` in try/catch) or a tap after `__ready` dismiss it. Shot with `--wait` just after ready
