@@ -1,174 +1,215 @@
 # Metropolis 2140: Roadmap
 
-Owner: PM. Scope: `index.html` (2,148 lines, one `boot()` closure). Verification: `node tools/shot.js` (headless SwiftShader, ~45 s per shot).
-Screenshots referenced below were taken at 960x600 and live in `tools/out/pm-*.png` (gitignored).
+Owner: PM. Scope: `index.html` (2,181 lines at `7ec5f9e`, one `boot()` closure). Verification: `node tools/shot.js` (headless SwiftShader, ~45 s per shot).
+Line numbers below are for `7ec5f9e`. Section banners (`/* ---------- … ---------- */`) are the stable anchors; prefer them when lines drift.
 
 ## The idea
 
 Metropolis 2140 is Manhattan 230 years from now: the same island, the same street grid, the same bridges and the same two
-landmark footprints as v1 (v1's stepped Empire-State tower and WTC-style tower at `(-37.5,-165)` and `(-112.5,-1191)` became the
-twisting megatower and the crystal needle, lines 582-595). The loader states the theme outright: the 1910 skyline sinks and the
-neon city rises (HTML 222-269). The fantasy is **watching a living future city breathe, and then dropping into it**: orbit it as a
-calm diorama at dusk or night, then take a flying car down between the towers and feel its scale. Every change should make the
-city more legible, more alive, or more inhabitable. Changes that turn it into a different game do not belong here.
+landmark footprints as v1 (v1's stepped Empire-State tower and WTC-style tower became the twisting megatower and the crystal needle).
+The loader states the theme outright: the 1910 skyline sinks and the neon city rises. The fantasy is **watching a living future city
+breathe, and then dropping into it**: orbit it as a calm diorama at dusk or night, then take a flying car down between the towers and
+feel its scale. Every change should make the city more legible, more alive, or more inhabitable. Changes that turn it into a
+different game do not belong here.
 
-## Current state
+## Current state (after Sprint 1 + QA round 1)
 
-**Boot and loader** (CSS 47-106, HTML 222-269, JS 185-191, 2144-2145). The 1910→2140 CSS animation is the best statement of the idea
-in the file. A hard 6.8 s floor (line 189) holds the loader up even when the scene is ready. A WebGL failure is handled (293-294).
-
-**Renderer, sky, moods** (286-352, 2061-2111). ACES, PCFSoft shadows at 4096² (2048² mobile) covering ±1900 units, PMREM env from
-the sky shader, UnrealBloom plus gamma, and MSAA RT on desktop WebGL2 only. Three moods tween smoothly (2103-2110). Night is the default (v1 defaulted
-to Dusk). *Rough:* in `pm-orbit.png` there is a hard horizontal seam where the fogged water/land meets the sky dome (fog colour
-≠ sky horizon colour, 304/2079 vs 328). The sun still casts full-res shadows at Night (`sunI:0.5`). The PMREM is rebuilt every 14 frames during
-mood tweens (2132). `pm-dusk.png` reads clearly better than Night: the towers form a legible silhouette and the hero spires
-stand out, though the horizon seam is even sharper there.
-
-**City generation and materials** (363-672, 956-1045, 1144-1274). Seeded RNG (288). Avenue/street grid, two hero towers, sky bridges,
-boroughs, instanced boxes with one big `onBeforeCompile` shader (365-474) that draws LED windows, neon edges and crowns, shopfronts,
-lamp pools *and* v1-era heritage detail (brick, sills, quoins, cornices: 411-445; fire escapes and AC units: 1191-1274).
-*Off-vision:* from the default orbit the city reads as dark silhouettes plus rainbow noise. Window grids barely show, searchlight
-beams (999-1010, ~22% of supertalls plus heroes) form "spaghetti", and the hero towers do not stand out. The heritage layer, which is the
-v1 DNA and the "two eras" story, cannot be seen at any orbit distance. All LEDs are cool white or amber (449), and v1's warm windows are gone.
-
-**Set pieces** (674-1127, 1528-1629). Park + lakes, five NYC bridges (701-859, very detailed), maglev loop, ground and flying traffic,
-60 holo billboards, rooftop pads, drone light show (900 points updated on the CPU every frame, 1062-1072), airships, hydrofoils, harbour
-biodome, Liberty 2140. *Rough:* the scene is at saturation. Each new layer now subtracts legibility rather than adding it.
-
-**Street life** (1276-1354). People, robots and delivery bots walk block perimeters, and updates are throttled when the camera is far (1336). Good.
-
-**Fly mode** (1356-1526, 1654-1785). The car is detailed, and there are chase and cockpit views, trails, synth engine audio, a radar, a compass, district toasts
-(1468-1481, which make the NYC identity explicit), roof landing, collision grid, touch stick and buttons. *Rough:* the spawn is at 18 m in a dark Downtown
-avenue (1686). In `pm-fly.png` the first frame is a grey canyon with lamp heads blown out into huge bloom blocks (MeshBasic ×1.6,
-1150/1177), and the car is barely readable. The HUD uses OS light/dark tokens, so it shows pale panels over a night city in light-theme browsers.
-
-**Hunt mode** (CSS 157-180, HTML 203/208/215-218, JS 1787-2059 ≈ 330 lines, plus hooks at 1509, 1696, 2001, 2137). Rogue drones and walkers,
-wanted-level stars, cash bounty, lock-on, "Wrecked". In `pm-hunt.png` (8 s in) no rogue is on screen yet, and the HUD gains a health/stars/cash panel. It works, but it is **off-vision**: it turns the future city into a GTA arena and
-puts a red "Hunt rogue AI" button in the main dock beside the mood controls (203). It can't be entered from fly mode because
-the dock is hidden while driving (181).
-
-**Code health.** There is one closure with implicit ordering (`drawRadar` reads `hunt` and `cur` before their declarations, 1509/859). `B` is mutated
-after the instanced city mesh is built (1620, 1654), so collision/radar and rendering disagree on what `B` means. `isMobile` is a UA sniff
-(291), and its branches consume the seeded `rand()` (e.g. 1017, 1166), so **phones generate a different city** than desktop does from line ~646 on.
+- **Orbit view: strong.** After M-002 the night and dusk orbits read clearly (hero spires, maglev ring, window grids). All three QA personas
+  loved it. Remaining roughness: the searchlight beams become a "pile of sticks" from top-down views (Q6-14a).
+- **Loader: loved, but rigid.** The 1910→2140 story is the best statement of the idea. It has a hard 6.8 s floor (line 189), can't be skipped,
+  collapses to its last frame under reduced motion, and its caption never says what the story is.
+- **Fly mode: the weak link.** It works and nothing dead-ends, and Boost is a hit. But the street is blown out to white, the car moves before you
+  touch it, mouse-only users can't steer at all, the touch stick stalls into walls, the chase camera ends up inside buildings, and the
+  key hint is unreadable. The "drop into it" half of the idea currently loses people within a minute.
+- **UI chrome:** plain-word chips work for adults but are small (31-37 px), carry no icons, follow the OS theme rather than the scene, and
+  "Orbit" and the HUD "Night" button are ambiguous.
+- **Hunt mode** is hidden behind `#hunt` (M-003, owner decision: hide, don't cut). Its code (≈1814-2060) stays in the file but is off-vision:
+  no work, no fixes.
+- **Code health:** `drawRadar` reads `hunt`/`cur` before their declarations. `B` is mutated after the instanced city mesh is built. `isMobile`
+  is a UA sniff whose branches consume the seeded `rand()`, so **phones generate a different city** (M-004).
 
 ## Risks
 
-1. **Legibility collapse.** The idea only works if the skyline reads at a glance. It currently doesn't at the default view, and adding more set pieces
-   makes it worse. Mitigation: freeze new set pieces until M-002/M-005 land.
-2. **Phone performance is unmeasured.** A 4096²/2048² shadow pass over thousands of instances, full-res bloom at DPR 1.5, ~3k car matrices,
-   900-point drone CPU update and street life every frame, with no adaptive quality and no FPS number anywhere. The harness is SwiftShader,
-   so absolute FPS is meaningless there. We need relative budgets (draw calls, triangles, ms/frame, shadow casters).
-3. **Mode sprawl.** Hunt mode competes with the core fantasy for dock space, code (~15% of the file) and team attention. Every rendering
-   change now also has to be checked against hunt FX.
-4. **Single-file size.** At 156 KB and 2,148 lines, three agents editing one file will collide. Mitigation: work by line region (below), keep
-   section banners intact, and rebase often. Never reformat.
-5. **Harness blind spots.** `shot.js` reports only errors and a PNG. It can't assert numbers, emulate a phone, or print `--eval` results.
-6. **Artifact constraints.** It must stay self-contained, use pinned jsDelivr three@0.128.0 only and Google Fonts only. Don't add a new CDN dependency
-   for post-processing or stats.
+1. **Legibility collapse.** Each new set piece subtracts legibility. Set pieces stay frozen.
+2. **Phone performance is unmeasured.** Shadows at 2048², full-res bloom, CPU drone show, no adaptive quality. M-001 provides the numbers, and M-004 acts on them.
+3. **Single-file collisions.** Three agents share one file. Work by region, keep section banners, never reformat, and merge one ticket at a time.
+4. **Harness blind spots.** No sound, no real frame rate, and the `dt` cap of 0.05 s makes held inputs simulate far less than wall time (QA saw about 1 fps).
+   Feel-related criteria must be checked by reading values through `--eval` (M-001), not by watching.
+5. **Artifact constraints.** It must stay self-contained, use pinned three@0.128.0 from jsDelivr only, and Google Fonts only.
+
+## QA round 1 (personas: age 6 touch, age 40 casual, age 75 cautious; reports in `qa/`, shots in `qa/shots/`)
+
+Build `7ec5f9e`, with zero JS errors in every run. Findings are cited by persona ID and folded into the tickets below.
+
+**Top 5 cross-persona issues**
+1. **Flying fights you.** The car moves on its own at spawn, mouse users have no way to steer, the touch stick stalls and turns into a wall, impacts stop the car dead, and B does nothing without W.
+   (Q75-01, Q75-02, Q40-08, Q6-01, Q40-05, Q40-06, Q40-15) → M-006, M-016
+2. **The street is blown out, so the key hint can't be read.** The hint is white 13 px text on a near-white road, written in gamer jargon, and it never mentions the arrow keys.
+   (Q40-03, Q75-03, Q40-20, Q6-09, Q6-11) → M-007 (glare), M-006 (hint)
+3. **The chase camera goes inside buildings.** The screen turns black or becomes a wall, and there is no visible way out. (Q40-01, Q6-01, Q40-05) → M-017
+4. **Controls are small, text-only, and ambiguous.** Targets are 31-37 px with no icons. "Fly a car" isn't prominent. "Orbit" looks like a fourth mood. The HUD "Night" button actually switches *to Day*.
+   (Q6-02, Q6-03, Q6-04, Q75-10, Q75-08, Q40-12, Q40-11, Q75-09, Q75-07) → M-018
+5. **The HUD ignores the scene and the screen.** Pale OS-theme panels sit over a night city, the gauge reflows at 3 digits, the compass overlaps the gauge, and in phone landscape the radar sits on top of Boost.
+   (Q6-08, Q40-13, Q6-10, Q40-10, Q6-07) → M-008
+
+Next tier: reduced-motion gaps (Q75-04, Q75-05 → M-019, M-010) and a loader that can't be skipped or understood (Q6-05, Q75-05, Q75-06 → M-010).
+
+**What all three enjoyed (protect it; any change that degrades these is a regression)**
+- **The night and dusk orbits** are share-worthy (Q6-14, Q40-17, Q75-13). Don't add set pieces or beams on top of them.
+- **The 1910→2140 loader story** (Q75-12 and the Q40 session). M-010 must keep it intact on the first visit.
+- **Boost with speed lines and the FOV kick:** "the best part" (Q6-13, Q40-19). Only reduced motion may turn the FX off.
+- **Safe, predictable Exit.** Esc or Exit returns to the exact orbit view you left, and mashing never creates a dead end (Q75-14, Q6-16, Q40-18).
+- **Plain-word buttons** for adults (Q75-15). M-018 adds icons *beside* the words and doesn't replace them.
+
+**Not taken (with reason)**
+- Hunt-only findings Q40-02 (Exit pushed off screen by the hunt panel), Q40-07 and Q40-14. Hunt is off-vision and hidden. The general rule "Exit never leaves the screen" is still enforced in M-008.
+- Q40-04, retention through scores, goals and saved progress: this is a different game. A "postcard" PNG of the current orbit is on-idea, so it's parked as P2 M-021.
+- Q6-12: not a bug (a capture taken mid-transition).
 
 ## Backlog
 
-Priority: P0 = this sprint/next, P1 = next two sprints, P2 = later or only if cheap. "Shot" means `node tools/shot.js index.html tools/out/<name>.png --wait=25000 --w=960 --h=600`
-and always also requires `"errors": []`.
+Priority: P0 = this sprint/next, P1 = next two sprints, P2 = later or only if cheap. "Shot" means `node tools/shot.js index.html tools/out/<name>.png --wait=25000 --w=960 --h=600`,
+and every shot also requires `"errors": []`. "Fly shot" adds `--eval="document.getElementById('fly').click()"`. Criteria that read values rely on M-001's printed `--eval`.
+
+### Done
+- **M-002 Readable skyline** (render-dev) ✅ done. This also fixed the sky shader's missing `<encodings_fragment>`, which had made every standard material black. Before-images taken before `7ec5f9e` are invalid.
+- **M-003 Hunt behind `#hunt`** (gameplay-dev) ✅ done. Owner decision: hide it, don't cut it. There is no dock button. `huntEnabled()` checks `location.hash==='#hunt'`.
 
 ### P0
 
-**M-001 Harness: metrics, phone preset, printed eval** (perf-qa-dev)
+**M-001 Harness: metrics, phone preset, printed eval** (perf-qa-dev) 🔶 in-progress
 Why: every other ticket needs numbers and a phone view to be verifiable, and perf is the biggest unknown.
-- `shot.js --metrics` prints JSON with `calls`, `triangles`, `geometries`, `textures` (from `renderer.info`), mean/p95 frame ms over 120 frames,
-  shadow-caster count and `isMobile`. Index exposes a `window.__m2140 = {renderer, camera, controls, info()}` debug hook (loop region 2127-2142 only).
-- `shot.js --mobile` emulates 390x844, DPR 3, touch, iPhone UA. In the PNG, the stick and Boost/Up/Down buttons are visible after clicking `#fly`.
-- `--eval` result is printed in the JSON output.
-- Baseline numbers for desktop orbit, desktop fly and mobile orbit are recorded in a short table appended to this file.
+- `shot.js --metrics` prints JSON with `calls`, `triangles`, `geometries`, `textures`, mean/p95 frame ms over 120 frames, shadow-caster count and `isMobile`.
+  `window.__m2140={renderer,camera,controls,info()}` hook (loop region 2160-2181 only).
+- `--mobile` emulates 390x844, DPR 3, touch and an iPhone UA. After clicking `#fly`, the stick and Boost/Up/Down are visible. The `--eval` result is printed in the JSON.
+- Baselines for desktop orbit, desktop fly and mobile orbit are appended to this file.
 
-**M-002 Readable skyline at the default view** (render-dev) ✅ done — also fixed the sky shader's missing `<encodings_fragment>`, which made the RGBE env map blow up and rendered every standard material black. Re-shoot any "before" images taken earlier.
-Why: the first 5 seconds after the loader *are* the idea. Right now they read as noise.
-- Default orbit shot: no visible horizon seam (sky horizon and fog colour match per mood, 304/328/2077-2079). Verify by eye at the
-  sky/water boundary in `pm-orbit.png` vs the new shot.
-- Searchlight beams cut to ≤ 6, limited to the two heroes plus the tallest supertalls, with lower alpha (552, 999-1010). The two hero towers are the
-  two most identifiable shapes in the shot.
-- Lit window grids are distinguishable on mid-distance towers (a viewer can count floors on at least 3 towers in the 960x600 shot).
-- Same checks pass for `data-mode=dusk` and `data-mode=day` shots. `--metrics` draw calls do not increase.
+**M-014 Designed flying car** (render-dev) 🔶 in-progress (owner request)
+Why: the car is the player's body in the "drop into it" half, and it must read at chase distance.
+- Region: car section 1383-1430 only. Fly shot: the car's silhouette reads at chase distance in Night and Dusk. Car emissives stay at or below the bloom threshold set by M-007, and
+  `--metrics` triangles rise by less than 5%. No edits to cockpit, radar or dash (1431-1554) in this ticket.
 
-**M-003 Hide Hunt mode behind `#hunt`** (gameplay-dev) ✅ done  — owner decision 2026-11-24: hide, don't cut
-Why: it is off-vision and costs ~330 lines, dock space and test surface. Fly mode stays as the "drop in" fantasy.
-- Remove `#huntBtn` (203), the hunt CSS (157-180), HUD markup (`#huntBar` 208, `#cross`/`#lockBox`/`#killPop`/`#wreck`/`#fireBtn` 215-218)
-  and JS 1787-2059 plus hooks at 1509, 1696, 2001, 2137. The code survives in git history.
-- `grep -c "hunt" index.html` returns 0. File shrinks by ≥ 300 lines.
-- Shots: default orbit (dock shows Day/Dusk/Night/Orbit/Fly only) and `--eval="document.getElementById('fly').click()"` both have zero errors,
-  and the fly HUD shows no health, stars or cash.
-- If the owner vetoes the cut, the fallback is to gate it behind `location.hash==='#hunt'` with no dock button. The same shots apply.
+**M-007 Street-level glare** (render-dev) ⬆ P0 · Sprint 2
+Why: every persona's fly screenshots are blown out to white. This hides the car, kills the hint (top issue 2) and turns "between the towers" into fog. (Q40-20, Q6-09, Q40-03, Q75-03)
+- Region: lamp heads and blade signs 1171-1217, LED banner colour at ~1273, the lamp-pool shader 1657-1665, and the mood table bloom values 2108-2130.
+- Fly shot at Night and Dusk: no single bloom blob covers more than 3% of the frame, the road under the car is not near-white (mean luminance of the bottom third below 0.6 by eye or a pixel check), and lamp *pools* remain visible.
+- The default orbit shot is unchanged in character (window grids and hero spires still read, as in the M-002 shots). `--metrics` calls do not increase.
 
-**M-004 Phone render budget** (perf-qa-dev, pairs with render-dev for review)
+**M-006 Fly mode: the first ten seconds** (gameplay-dev) · Sprint 2
+Why: "dropping in" should be a reveal you control. Today the first frame is a glare canyon, the car is already moving, and mouse users can't steer.
+(Q75-02, Q75-01, Q40-08, Q75-03, Q40-03, Q40-06, Q75-11, Q6-11, Q75-15, Q40-15, Q6-01)
+- Region: `enterDrive` 1711-1721, `.keys` CSS 121, the `pointer:coarse` rule at 130, hint markup at 214, and the stick and vbtns markup at 219-220. **Not** `updateDrive`.
+- Spawn hovering at **0 km/h** on a rooftop pad (`PADS`) at 120-200 m, facing the megatower. Fly shot: the gauge reads `0` and altitude reads 120-200, with the car and megatower in frame and lit streets below.
+- The district name toasts at spawn ("Downtown, Manhattan").
+- Mouse users can fly: on `pointer:fine` the stick and Up/Down/Boost are shown until the first key press (they already take pointer events). There is a "Steer" label under the stick.
+  A desktop fly shot shows them.
+- The hint sits on a dark pill at ≥ 16 px and leads with the arrow keys: "Arrow keys: steer and speed · Space/Shift: up/down · B: boost · Escape or Exit: back to city".
+  It fades after about 8 s. Fly shot: the hint is legible.
+- The Exit-restores-orbit behaviour (Q75-14) is unchanged. Verify with the eval `fly.click(); exitBtn.click()` and compare to the orbit shot.
+
+**M-004 Phone render budget** (perf-qa-dev; render-dev reviews). Blocked on M-001 baselines.
 Why: "must work on phones" is a hard constraint, and today it is untested.
-- Mobile tier: shadows off or a 1024² map with static-only update, bloom at half resolution, DPR cap ≤ 1.5 (298, 348, 2063-2072).
-  Night disables `sun.castShadow` on all tiers (sun is 0.5 intensity).
-- `--mobile --metrics`: calls and ms/frame are each ≥ 30% below the M-001 mobile baseline. The mobile orbit PNG is still recognisably the same
-  skyline as desktop.
-- Decimation in `isMobile` branches must not consume the city `rand()` (use a second seeded RNG). The mobile and desktop orbit shots
-  show the same Manhattan tower layout.
+- Region: renderer 293-315, post 2094-2107, and `isMobile` branches. Mobile tier: shadows off or 1024² static, bloom at half resolution, DPR cap ≤ 1.5. At Night, `sun.castShadow` is off on all tiers.
+- With `--mobile --metrics`, calls and ms/frame are each ≥ 30% below the M-001 mobile baseline. Decimation uses a second seeded RNG, so the mobile and desktop orbit shots have the same tower layout.
 
 ### P1
 
+**M-016 Steering that doesn't fight you** (gameplay-dev)
+Why: the car should go where a child's thumb, or anyone's, means it to. (Q6-01, Q40-05, Q40-06, Q40-15)
+- Region: `updateDrive` input and physics, 1756-1776.
+- Touch auto-cruise: a mostly-sideways stick keeps ≥ 20 km/h forward. Check with eval: dispatch pointer events holding `#stick` at its left edge for 60 frames, then read `#spd` ≥ 20.
+- B implies forward. The eval `KeyB` alone raises speed.
+- Wall impacts keep the tangential velocity (slide) with a small bounce. Eval: driving into a facade at 150 km/h leaves speed ≥ 30% after 6 frames.
+- Climb rate ramps when Up is held. Eval: Space held for 48 frames gains ≥ 25 m.
+
+**M-017 Chase camera never enters buildings** (gameplay-dev)
+Why: a black screen is the one true dead end in the product. (Q40-01, Q6-01)
+- Region: chase-camera block 1791-1799.
+- The camera ray from the car to `_want` is tested with `collide()` and the camera is pulled in and up when blocked. Eval: steer into a facade (`age40-k-climb.png` repro), then shot: the car is visible and less than 20% of the frame is black.
+
+**M-008 HUD follows the scene and the screen** (gameplay-dev)
+Why: pale panels over a night city break the mood, and colliding widgets look broken. (Q6-08, Q40-13, Q6-10, Q40-10, Q6-07, Q40-02 general rule)
+- Region: CSS tokens 11-25 and HUD CSS 108-160 (excluding 121/130 if M-006 has not merged).
+- In-scene UI uses dark tokens at Night and Dusk regardless of `prefers-color-scheme`. A light-scheme fly shot shows dark translucent panels.
+- The gauge has a fixed width with `nowrap`. The compass sits below the gauge at ≤ 700 px. A short-height media query keeps the radar off Boost. Shots: `--mobile` fly with Boost
+  (3-digit speed) and 844x390 landscape fly show no overlaps. Exit stays fully on screen at 320 px width.
+
+**M-018 Controls anyone can use** (gameplay-dev; can be split with M-008 by region)
+Why: the 6-year-old can't read the chips and the 75-year-old can't see them, yet both want to use them. (Q6-02, Q6-03, Q6-04, Q75-10, Q75-08, Q40-12, Q40-11, Q75-09, Q75-07, Q6-06)
+- Region: dock CSS 37-46 and title CSS 36, dock/HUD markup 195-209, UI JS 2146-2158, and the `lightBtn` handler 1735.
+- Icons beside the words (sun, sunset, moon, ⟳, car, ✕, speaker, ↑ ↓ ⚡). The words stay. All targets are ≥ 44 px, sizes are in `rem`, and `user-select:none` / `-webkit-touch-callout:none` are set on hold buttons.
+- "Fly a car" becomes a distinct primary button. "Orbit" is renamed "Slow spin" and styled as a toggle, not a selected chip. A "Reset view" button eases back to the default orbit.
+- The HUD mood button reads "Lighting: Night ▸" (an action, not a state). The orbit hint is ≥ 15 px on a dark backing.
+- Shots: the default orbit at 390x844 has a one-row dock (or a clear two-row layout with Fly prominent). In the orbit shot only the active mood looks selected.
+
+**M-010 Honest loader** (perf-qa-dev) · Sprint 2
+Why: the 1910→2140 story is the idea's best moment. It should explain itself, survive reduced motion, and not tax repeat visits. (Q6-05, Q75-05, Q75-06, Q75-12, Q40 session)
+- Region: loader CSS 47-106, reduced-motion rule 182, head JS 185-191, loader HTML 222-269.
+- The first visit plays the full sequence. Repeat visits (per-viewer `localStorage` in try/catch) or a tap after `__ready` dismiss it. Shot with `--wait` just after ready
+  on a repeat visit: the loader is gone within 500 ms.
+- The caption changes per era ("1910: the brick city" … "2140: the neon city rises") at ≥ 16 px. Loader shots at 1/3/5 s show the three captions.
+- Under `prefers-reduced-motion`, 3-4 still frames crossfade slowly instead of cutting to the end. A reduced-motion loader shot at 1.5 s shows 1910, not 2140.
+
+**M-019 Reduced motion and comfort in fly mode** (gameplay-dev)
+Why: calm is part of the idea, and the cautious visitor is exactly who turns reduced motion on. (Q75-04, Q40-16)
+- Region: the FX lines in `updateDrive` 1800-1806 (shake, FOV, speedfx) and the hit flash in the collide branch 1772-1775.
+- Under reduced motion there is no speed-line overlay, no FOV kick and no shake, and a soft cue replaces the red flash. Eval with emulated `reducedMotion:'reduce'` while boosting: `#speedfx` opacity 0.
+- On `visibilitychange` to hidden, the AudioContext suspends.
+
 **M-005 Two eras, one city** (render-dev)
-Why: the loader promises 1910→2140. The city should show old bones under new light, which is what makes it *this* city and not generic cyberpunk.
-- `style 0` (heritage low-rise, 428-445) gets warm 2700K-ish windows (v1 palette), while modern towers keep cool LEDs (449).
-- Dusk orbit shot: a warm low band at street level and cool towers above, visible without zooming.
-- Cornices and fire escapes still read in a close orbit shot (`--eval` setting `camera` via `__m2140` near 5th-Ave-equivalent, ~150 m).
-
-**M-006 Fly mode: the first ten seconds** (gameplay-dev)
-Why: dropping in should be a reveal, not a grey canyon.
-- Spawn on a rooftop landing pad (`PADS`, 1031-1039) at 120-200 m, facing the midtown megatower (1684-1694). The first fly shot shows the car,
-  the megatower and lit streets below.
-- The intro toast names the district and gives one control hint. Exit restores the orbit camera exactly (1695-1703).
-
-**M-007 Street-level glare** (render-dev) ⬆ P0 after M-002: with lighting fixed, fly mode at street level is blown out (`tools/out/m002-fly.png`); street-glow shader ~1660-1680 and car lights.
-Why: lamp heads, blade signs and banners (MeshBasic ×1.6-1.8, 1144-1189) bloom into huge blocks near the camera (`pm-fly.png`).
-- In the fly shot, no single bloom blob covers > 3% of the frame. Lamp *pools* on the road (1630-1652) remain visible.
-
-**M-008 HUD follows the scene, not the OS** (gameplay-dev)
-Why: pale HUD panels over a night city break the mood (`pm-fly.png`, light-scheme headless).
-- HUD and dock tokens switch with mood (Night/Dusk → dark panels, Day → light) regardless of `prefers-color-scheme` (CSS 11-25).
-- Fly shot in a light-scheme context shows dark translucent HUD panels at Night.
+Why: the loader promises 1910→2140. The city should show old bones under new light.
+- Heritage low-rise (`style 0`, city shader 366-514) gets warm windows, while modern towers keep cool LEDs. Dusk orbit shot: a warm band at street level and cool towers above.
+- Cornices and fire escapes read in a close orbit shot (~150 m, camera set through `__m2140`).
 
 **M-009 Regression pack** (perf-qa-dev)
-Why: three agents in one file means regressions are certain.
-- `tools/check.sh` runs orbit-night, orbit-dusk, fly and mobile-orbit, fails on any error, and prints the M-001 metrics diff vs the stored baseline (±10%).
-- Every merged ticket has a check.sh run pasted in its PR.
-
-**M-010 Honest loader** (perf-qa-dev)
-Why: the 6.8 s floor (189) taxes every visit. The animation is lovely once, and tedious on reload.
-- First visit plays the full 1910→2140 sequence. Repeat visits (per-viewer `localStorage`, try/catch) or a tap dismiss as soon as `__ready`.
-- `--metrics` reports time-to-ready, and the loader is gone ≤ 500 ms after ready on a repeat visit.
+- `tools/check.sh` runs orbit-night, orbit-dusk, fly and mobile-orbit, fails on any error, and prints the metrics diff against the stored baseline (±10%). Its output is pasted on every merge.
 
 ### P2
 
-**M-011 Default mood decision: Night vs Dusk** (render-dev)
-Why: v1 defaulted to Dusk, and `pm-dusk.png` already reads better than the Night default. Decide using M-002/M-005 shots side by side and record the decision here.
+**M-011 Default mood: Night vs Dusk** (render-dev). QA split: Q6-14 keep Night, while Q40-17 and Q75-13 favour Dusk. Decide after M-005 using side-by-side shots, and record the decision here.
+**M-012 Orbit as a slow landmark tour** (gameplay-dev). The auto orbit drifts past the megatower, the bridges, Liberty and the park. Shots at `--after` 0/15/30 s show three landmarks, and any drag hands control back immediately.
+**M-013 Drone show to GPU** (perf-qa-dev). Move the 900-point morph to a vertex shader. The dusk orbit shows no visual change and mobile ms/frame drops.
+**M-020 Cockpit view cleanup** (render-dev, after M-014). The dash neon blooms into a slab, the dash text duplicates the HUD, and in portrait the dash is cropped (Q40-09). Region: cockpit/dash 1431-1554.
+**M-021 Postcard** (gameplay-dev). One button saves a PNG of the current orbit view, which is the thing Q40 wanted to share. Only if cheap: `preserveDrawingBuffer` must not cost perf.
+**Watch:** searchlight beams read as sticks from top-down views (Q6-14a, region 1018-1038). Fold this into M-012 or M-011 if it is touched anyway.
 
-**M-012 Orbit as a slow landmark tour** (gameplay-dev)
-Why: "watch the city breathe". The auto orbit could drift past the megatower, the bridges, Liberty and the park drone show instead of one fixed ring (307-312, 2116-2120).
-- Tour shot sequence (`--after` 0/15/30 s) shows three different landmarks. Any user drag hands control back immediately.
+### Blocked / pending owner decision
 
-**M-013 Drone show to GPU** (perf-qa-dev)
-Why: 900 points of trig per frame on the CPU (1062-1072) is a cheap win on phones. Move the shape morph into a vertex shader.
-- No visual change in the dusk orbit shot, and `--metrics` ms/frame on mobile drops.
+**M-015 Real NYC/NJ footprints** (render-dev + gameplay-dev). ⛔ Blocked on network only: owner approved the scope (Manhattan + Jersey City + Hoboken) on 2026-11-24. Data source is OpenStreetMap; Google 3D Tiles was ruled out because its terms forbid extracting building geometry.
+Rebuild the city from OpenStreetMap building footprints and heights for Manhattan plus the Jersey City/Hoboken waterfront, with 2140 upgrades grown from each real building.
+- It would replace geography 515-538 (the island outline), procedural buildings 539-667 and the two hero placements, and it would feed instancing 668-692, the collision/radar `B`, `district()` 1495 and the set-piece anchors (bridges, pads, Liberty).
+  The city shader, moods and fly mode stay.
+- The data has to be embedded in the single file, so a size budget is needed (simplified footprints, quantised). Generation stays deterministic.
+- **ODbL:** a visible "© OpenStreetMap contributors" credit (dock or loader) and a link to the licence. Derived data has share-alike implications, which the owner must accept.
+- Scope note: the NJ waterfront extends beyond "the same island" in the idea. If it's approved, the idea text gets updated first.
 
-**Deferred (do not start):** new landmarks or set pieces, weather, ambient orbit audio, more traffic layers, any mode beyond Fly.
-Revisit after M-002 and M-005 ship.
+**Deferred (do not start):** new landmarks or set pieces, weather, ambient orbit audio, more traffic layers, any mode beyond Fly, scores, goals or saved progress.
 
-## Sprint 1
+## Sprint 1 (closed)
+M-002 ✅, M-003 ✅, M-001 carried into Sprint 2.
 
-One ticket per dev, chosen so the line regions don't overlap:
+## Sprint 2: make "dropping in" work
 
-| Dev | Ticket | Regions of `index.html` touched |
-|---|---|---|
-| render-dev | **M-002** Readable skyline | sky shader 316-343, city shader emissive 448-473, searchlight selection 551-552 & 999-1010, mood table 2075-2084 |
-| gameplay-dev | **M-003** Retire Hunt mode | CSS 157-180, dock/HUD HTML 203, 208, 215-218, hunt JS 1787-2059, one-line hooks at 1509 (radar), 1696 (exitDrive), 2137 (loop) |
-| perf-qa-dev | **M-001** Harness metrics + phone preset | `tools/shot.js` (whole file), plus a ≤ 5-line `window.__m2140` hook beside line 2139 |
+Carry-overs occupy regions that nobody else may touch: **M-001** (`tools/shot.js` plus the loop end 2160-2181) and **M-014** (car section 1383-1430).
 
-Coordination notes:
-- Line 2137 (gameplay drops `if(hunt.on)…`) and line 2139 (perf-qa adds the hook) are adjacent. perf-qa merges first, and gameplay rebases.
-- render-dev must not touch 1787-2059 or HUD CSS. gameplay-dev must not touch the mood table.
-- Sprint exit: all three merged, and `check`-style shots (orbit night, orbit dusk, fly, `--mobile` orbit) are all error-free with baselines recorded.
-  M-004 and M-005 are queued next.
+| Dev | Ticket | Regions of `index.html` touched | Starts |
+|---|---|---|---|
+| render-dev | **M-007** Street-level glare | 1171-1217, ~1273, 1657-1665, mood table 2108-2130 | after M-014 merges, or in a second render worktree now |
+| gameplay-dev | **M-006** Fly: first ten seconds | CSS 121, 130; HTML 214, 219-220; `enterDrive` 1711-1721 | now |
+| perf-qa-dev | **M-010** Honest loader | CSS 47-106, 182; head JS 185-191; loader HTML 222-269 | after M-001 merges |
+
+**Why these three:**
+- **M-007** removes the root cause of top issue 2 and is a precondition for judging any fly-mode ticket. Every fly screenshot from all three personas is blown out.
+  It sharpens existing lighting and adds no features.
+- **M-006** is the smallest change that hits top issue 1 (no car moving on its own, mouse users can fly by reusing the existing stick) and top issue 2 (a readable hint).
+  It also softens issue 3, because spawning in open air at 150 m removes the "first turn into a wall". It stays out of `updateDrive`, so M-016/M-017 can follow without conflict.
+- **M-010** covers the "protect the loader" item and three personas' findings, sits in a fully isolated region, and is cheap.
+
+**Why not the others yet:**
+- M-016/M-017 edit `updateDrive`. They should land after M-006 changes the spawn context and M-007 makes the results visible.
+- M-008/M-018 are broad HUD/dock CSS+HTML surgery. They overlap M-006's hint and stick lines, and gameplay-dev has one slot.
+- M-004 is blocked on M-001 baselines and would collide with M-007 on bloom settings. It goes first for perf-qa-dev in Sprint 3.
+
+**Coordination:** M-007 must not edit car emissives (1383-1430). It posts its new bloom threshold for M-014 to respect. M-006 must not touch HUD CSS outside 121/130.
+Sprint exit: all tickets merged one at a time. After each merge, re-shoot orbit night, orbit dusk, fly and `--mobile` fly, all error-free. QA personas re-run their fly sessions.
+Sprint 3 (queued): M-016 + M-017 (gameplay-dev), M-004 (perf-qa-dev), and M-008/M-018 split once M-006 is in.
