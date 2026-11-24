@@ -14,6 +14,13 @@
 //   --frames=n        frames to time for --metrics (default 120)
 //   --readyTimeout=ms how long --metrics waits for window.__ready (default 900000)
 //   --shotTimeout=ms  screenshot timeout (default 180000)
+//   --then="js"       after the main screenshot: run js, wait --after, screenshot to out-then.png
+//   --reducedMotion   emulate prefers-reduced-motion: reduce
+//   --init="js"       script run before any page script on every navigation (e.g. seed localStorage)
+//   --loaderAt=ms,ms  loader capture mode: holds the three.js download so boot() never blocks the
+//                     main thread, screenshots at each time (ms after navigation commit) to
+//                     out-<ms>.png, then exits. --wait/--eval/--metrics are ignored. Animations are
+//                     paused and seeked to each time for an exact frame (--loaderSeek=0: free-running).
 //
 // Output: JSON on stdout. Exit code is 1 if the page logged JS errors (or eval threw).
 // NOTE: software GL (SwiftShader) -- absolute ms are meaningless; compare runs relative
@@ -41,6 +48,52 @@ function contextOptions() {
     };
   }
   return { viewport: { width: +(flags.w || 1280), height: +(flags.h || 800) } };
+}
+
+// Loader capture: three.js is held (never answered) so the page stays in its loader with an idle
+// main thread; boot() otherwise blocks the screenshot pipeline for tens of seconds on software GL.
+// By default every CSS animation is paused and seeked to the requested time before the screenshot,
+// so the frame is exact even when a DPR-3 capture takes seconds. --loaderSeek=0 lets them run freely
+// (wall-clock capture); animMsBefore/After then show how far the story moved during the capture.
+async function loaderShots(p, times) {
+  const seek = flags.loaderSeek !== '0';
+  const t0 = Date.now();
+  await p.goto('file://' + page, { waitUntil: 'commit' });
+  const shots = [];
+  // Natural story clock: ms since the loader's animations started, as if never paused.
+  const clock = () => p.evaluate(() => {
+    if (window.__ldStart == null) {
+      const a = document.getAnimations().find(a => a.effect && a.effect.target && a.effect.target.matches('.ld-year div'));
+      if (!a || a.startTime == null) return null;
+      window.__ldStart = a.startTime;
+    }
+    return Math.round(document.timeline.currentTime - window.__ldStart);
+  }).catch(() => null);
+  for (const t of times) {
+    const left = t - (Date.now() - t0);
+    if (left > 0) await p.waitForTimeout(left);
+    const f = out.replace(/\.png$/i, '') + '-' + t + '.png';
+    const at = Date.now() - t0;
+    const animMsBefore = await clock();
+    const state = await p.evaluate(([t, seek]) => {
+      if (seek) document.getAnimations().forEach(a => { a.pause(); a.currentTime = t; });
+      const l = document.getElementById('loader');
+      const era = [...document.querySelectorAll('.ld-era span')].map(s => [s.textContent.split(':')[0], +(+getComputedStyle(s).opacity).toFixed(2)]);
+      const yr = document.querySelector('.ld-year div'), sp = [...yr.children];
+      const off = yr.getBoundingClientRect().top - yr.parentNode.getBoundingClientRect().top;
+      const year = (sp[Math.round(-off / sp[0].offsetHeight)] || {}).textContent;
+      return { year, era, eraFontPx: parseFloat(getComputedStyle(document.querySelector('.ld-era')).fontSize),
+        loaderClass: l ? l.className : null, caption: (document.getElementById('loadMsg') || {}).textContent };
+    }, [t, seek]).catch(e => ({ error: e.message }));
+    await p.screenshot({ path: f, timeout: +(flags.shotTimeout || 180000) });
+    const animMsAfter = await clock();
+    if (seek) await p.evaluate(() => document.getAnimations().forEach(a => {
+      // play() would rewind a finished animation, so only resume ones still running.
+      if (a.currentTime < a.effect.getComputedTiming().endTime) a.play();
+    })).catch(() => {});
+    shots.push(Object.assign({ out: f, requestedMs: t, seeked: seek, wallMs: at, animMsBefore, animMsAfter, doneMs: Date.now() - t0 }, state));
+  }
+  return shots;
 }
 
 // Collects one-frame renderer.info totals across every composer pass, plus rAF frame timing.
@@ -75,24 +128,41 @@ async function collectMetrics(p, frames) {
 (async () => {
   fs.mkdirSync(path.dirname(out), { recursive: true });
   const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
-  const ctx = await browser.newContext(contextOptions());
+  const ctx = await browser.newContext(Object.assign(contextOptions(), flags.reducedMotion ? { reducedMotion: 'reduce' } : {}));
+  const loaderAt = flags.loaderAt ? String(flags.loaderAt).split(',').map(Number) : null;
   await ctx.route(/cdn\.jsdelivr\.net\/npm\/three@[^/]+\/(.*)$/, (route) => {
+    if (loaderAt) return; // hold: never fulfilled while capturing the loader
     const rel = route.request().url().match(/three@[^/]+\/(.*)$/)[1];
     const f = path.join(THREE_DIR, rel);
     fs.existsSync(f) ? route.fulfill({ path: f, contentType: 'application/javascript' }) : route.abort();
   });
   await ctx.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, body: '' }));
   // Record time-to-ready (ms since navigation start) without touching the page's code.
+  if (flags.init) await ctx.addInitScript(String(flags.init));
   await ctx.addInitScript(() => {
     const iv = setInterval(() => { if (window.__ready) { window.__shotReadyAt = performance.now(); clearInterval(iv); } }, 50);
+    // Time the loader got .gone (exact, via MutationObserver), for skip/repeat-visit checks.
+    document.addEventListener('DOMContentLoaded', () => {
+      const l = document.getElementById('loader');
+      if (!l) return;
+      const mo = new MutationObserver(() => { if (l.classList.contains('gone')) { window.__shotLoaderGoneAt = performance.now(); mo.disconnect(); } });
+      mo.observe(l, { attributes: true, attributeFilter: ['class'] });
+    });
   });
   const p = await ctx.newPage();
   const errors = [];
   p.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   p.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+  const result = { page, out, mobile: !!flags.mobile, reducedMotion: !!flags.reducedMotion };
+  if (loaderAt) {
+    result.loaderShots = await loaderShots(p, loaderAt);
+    result.errors = errors;
+    console.log(JSON.stringify(result, null, 1));
+    await browser.close();
+    process.exit(errors.length ? 1 : 0);
+  }
   await p.goto('file://' + page);
   await p.waitForTimeout(wait);
-  const result = { page, out, mobile: !!flags.mobile };
   if (flags.eval) {
     try {
       const v = await p.evaluate(flags.eval);
@@ -111,7 +181,20 @@ async function collectMetrics(p, frames) {
     result.metrics.hostLoad = [load0, os.loadavg()[0]].map(x => Math.round(x * 10) / 10);
     result.metrics.hostCpus = os.cpus().length;
   }
+  // ms since navigation start: when __ready was first seen (50 ms poll) and when #loader got .gone.
+  result.timing = await p.evaluate(() => ({ readyMs: window.__shotReadyAt != null ? Math.round(window.__shotReadyAt) : null,
+    loaderGoneMs: window.__shotLoaderGoneAt != null ? Math.round(window.__shotLoaderGoneAt) : null })).catch(() => null);
   await p.screenshot({ path: out, timeout: +(flags.shotTimeout || 180000) });
+  if (flags.then) {
+    // Second step: run --then after the first screenshot, wait --after, shoot <out>-then.png.
+    const f2 = out.replace(/\.png$/i, '') + '-then.png';
+    try { const v = await p.evaluate(flags.then); result.then = v === undefined ? null : v; }
+    catch (e) { errors.push('then: ' + e.message); result.then = null; }
+    await p.waitForTimeout(+(flags.after || 4000));
+    result.thenTiming = await p.evaluate(() => ({ loaderGoneMs: window.__shotLoaderGoneAt != null ? Math.round(window.__shotLoaderGoneAt) : null })).catch(() => null);
+    await p.screenshot({ path: f2, timeout: +(flags.shotTimeout || 180000) });
+    result.thenOut = f2;
+  }
   result.errors = errors;
   console.log(JSON.stringify(result, null, 1));
   await browser.close();
