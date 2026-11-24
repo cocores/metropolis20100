@@ -84,7 +84,7 @@ Why: every other ticket needs numbers and a phone view to be verifiable, and per
 - `--mobile` emulates 390x844, DPR 3, touch and an iPhone UA. After clicking `#fly`, the stick and Boost/Up/Down are visible. The `--eval` result is printed in the JSON.
 - Baselines for desktop orbit, desktop fly and mobile orbit are appended to this file.
 
-**M-014 Designed flying car** (render-dev) 🔶 in-progress (owner request)
+**M-014 Designed flying car** (render-dev) ✅ done (owner request). The car is 18.5k triangles and 94 meshes; M-004 may merge its static parts for phones.
 Why: the car is the player's body in the "drop into it" half, and it must read at chase distance.
 - Region: car section 1383-1430 only. Fly shot: the car's silhouette reads at chase distance in Night and Dusk. Car emissives stay at or below the bloom threshold set by M-007, and
   `--metrics` triangles rise by less than 5%. No edits to cockpit, radar or dash (1431-1554) in this ticket.
