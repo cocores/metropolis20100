@@ -81,7 +81,7 @@ Why: every other ticket needs numbers and a phone view to be verifiable, and per
 - `--eval` result is printed in the JSON output.
 - Baseline numbers for desktop orbit, desktop fly and mobile orbit are recorded in a short table appended to this file.
 
-**M-002 Readable skyline at the default view** (render-dev)
+**M-002 Readable skyline at the default view** (render-dev) ✅ done — also fixed the sky shader's missing `<encodings_fragment>`, which made the RGBE env map blow up and rendered every standard material black. Re-shoot any "before" images taken earlier.
 Why: the first 5 seconds after the loader *are* the idea. Right now they read as noise.
 - Default orbit shot: no visible horizon seam (sky horizon and fog colour match per mood, 304/328/2077-2079). Verify by eye at the
   sky/water boundary in `pm-orbit.png` vs the new shot.
@@ -122,7 +122,7 @@ Why: dropping in should be a reveal, not a grey canyon.
   the megatower and lit streets below.
 - The intro toast names the district and gives one control hint. Exit restores the orbit camera exactly (1695-1703).
 
-**M-007 Street-level glare** (render-dev)
+**M-007 Street-level glare** (render-dev) ⬆ P0 after M-002: with lighting fixed, fly mode at street level is blown out (`tools/out/m002-fly.png`); street-glow shader ~1660-1680 and car lights.
 Why: lamp heads, blade signs and banners (MeshBasic ×1.6-1.8, 1144-1189) bloom into huge blocks near the camera (`pm-fly.png`).
 - In the fly shot, no single bloom blob covers > 3% of the frame. Lamp *pools* on the road (1630-1652) remain visible.
 
