@@ -90,7 +90,7 @@ Why: the first 5 seconds after the loader *are* the idea. Right now they read as
 - Lit window grids are distinguishable on mid-distance towers (a viewer can count floors on at least 3 towers in the 960x600 shot).
 - Same checks pass for `data-mode=dusk` and `data-mode=day` shots. `--metrics` draw calls do not increase.
 
-**M-003 Hide Hunt mode behind `#hunt`** (gameplay-dev)  — owner decision 2026-11-24: hide, don't cut
+**M-003 Hide Hunt mode behind `#hunt`** (gameplay-dev) ✅ done  — owner decision 2026-11-24: hide, don't cut
 Why: it is off-vision and costs ~330 lines, dock space and test surface. Fly mode stays as the "drop in" fantasy.
 - Remove `#huntBtn` (203), the hunt CSS (157-180), HUD markup (`#huntBar` 208, `#cross`/`#lockBox`/`#killPop`/`#wreck`/`#fireBtn` 215-218)
   and JS 1787-2059 plus hooks at 1509, 1696, 2001, 2137. The code survives in git history.
