@@ -172,3 +172,18 @@ Coordination notes:
 - render-dev must not touch 1787-2059 or HUD CSS. gameplay-dev must not touch the mood table.
 - Sprint exit: all three merged, and `check`-style shots (orbit night, orbit dusk, fly, `--mobile` orbit) are all error-free with baselines recorded.
   M-004 and M-005 are queued next.
+
+## M-001 baseline (2026-11-24, perf-qa-dev)
+
+`node tools/shot.js index.html <out> --wait=40000 --metrics [--mobile] [--eval="document.getElementById('fly').click()"]`, Night mood, 120 timed frames.
+Counts are for one full frame (shadow pass plus every composer pass, so `info.autoReset` is off for that frame). They are deterministic and are what later tickets diff against.
+Frame ms are SwiftShader on a shared 4-CPU host under heavy load from parallel agents (`hostLoad` = 1-min load avg before/after timing). Compare them only against runs at similar load.
+
+| View | calls | triangles | points | geometries | textures | programs | shadow casters | shadow map | isMobile | DPR | frame ms mean / p95 | hostLoad |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| desktop orbit 1280x800 | 545 | 6,347,656 | 25,347 | 312 | 16 | 31 | 137 | 4096² | false | 1 | 16,876 / 25,245 | ~8.6 |
+| desktop fly 1280x800 | 505 | 6,322,498 | 25,487 | 349 | 16 | 40 | 137 | 4096² | false | 1 | 36,045 / 66,559 | 37 → 11 |
+| mobile orbit 390x844 @3x | 385 | 3,718,924 | 17,682 | 233 | 16 | 31 | 137 | 2048² | true | 1.5 | 12,423 / 15,810 | 34 → 23 |
+
+Notes: the mobile tier still renders shadows (2048², 137 casters) and ~3.7 M triangles a frame, which is the M-004 target.
+`isMobile` is also true for any viewport narrower than 700 px on its short side, so the `--w=960 --h=600` shot in CLAUDE.md runs the mobile tier.
