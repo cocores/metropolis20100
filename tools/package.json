@@ -1,0 +1,3 @@
+{ "name": "metropolis-tools", "private": true, "description": "Local render harness for Metropolis",
+  "scripts": { "shot": "node shot.js" },
+  "devDependencies": { "three": "0.128.0" } }
