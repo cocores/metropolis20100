@@ -175,6 +175,12 @@ Why: the loader promises 1910→2140. The city should show old bones under new l
 
 ### Blocked / pending owner decision
 
+**M-019 Populate Central Park** (render-dev #2) 🔶 in-progress (owner request, 2026-11-24)
+Why: the park is the city's green heart and the one place where the two eras meet at human scale. Today it's a flat slab with ponds and trees.
+- Path network, recognisable Central Park places reimagined for 2140, and people, robots, dogs and boats that move through the park.
+- Its own seeded RNG, so the rest of the city doesn't reshuffle. Night lighting that reads from the orbit view. Phone tier capped.
+- Region: the park section plus a new park-life section after it. At most one call line in the loop.
+
 **M-015 Real NYC/NJ footprints** (render-dev + gameplay-dev). ⛔ Blocked on network only: owner approved the scope (Manhattan + Jersey City + Hoboken) on 2026-11-24. Data source is OpenStreetMap; Google 3D Tiles was ruled out because its terms forbid extracting building geometry.
 Rebuild the city from OpenStreetMap building footprints and heights for Manhattan plus the Jersey City/Hoboken waterfront, with 2140 upgrades grown from each real building.
 - It would replace geography 515-538 (the island outline), procedural buildings 539-667 and the two hero placements, and it would feed instancing 668-692, the collision/radar `B`, `district()` 1495 and the set-piece anchors (bridges, pads, Liberty).
@@ -188,7 +194,10 @@ Rebuild the city from OpenStreetMap building footprints and heights for Manhatta
 ## Sprint 1 (closed)
 M-002 ✅, M-003 ✅, M-001 carried into Sprint 2.
 
-## Sprint 2: make "dropping in" work
+## Sprint 2
+
+Status 2026-11-24: started. Line numbers below predate the M-014 car merge (+~100 lines after line 1383); find regions by their section comments.
+: make "dropping in" work
 
 Carry-overs occupy regions that nobody else may touch: **M-001** (`tools/shot.js` plus the loop end 2160-2181) and **M-014** (car section 1383-1430).
 
