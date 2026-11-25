@@ -63,7 +63,7 @@ Next tier: reduced-motion gaps (Q75-04, Q75-05 → M-019, M-010) and a loader th
 
 **Not taken (with reason)**
 - Hunt-only findings Q40-02 (Exit pushed off screen by the hunt panel), Q40-07 and Q40-14. Hunt is off-vision and hidden. The general rule "Exit never leaves the screen" is still enforced in M-008.
-- Q40-04, retention through scores, goals and saved progress: this is a different game. A "postcard" PNG of the current orbit is on-idea, so it's parked as P2 M-021.
+- Q40-04, retention through scores, goals and saved progress: this is a different game. A "postcard" PNG of the current orbit is on-idea, so it's parked as P2 M-022.
 - Q6-12: not a bug (a capture taken mid-transition).
 
 ## Backlog
@@ -89,7 +89,7 @@ Why: the car is the player's body in the "drop into it" half, and it must read a
 - Region: car section 1383-1430 only. Fly shot: the car's silhouette reads at chase distance in Night and Dusk. Car emissives stay at or below the bloom threshold set by M-007, and
   `--metrics` triangles rise by less than 5%. No edits to cockpit, radar or dash (1431-1554) in this ticket.
 
-**M-007 Street-level glare** (render-dev) ⬆ P0 · Sprint 2
+**M-007 Street-level glare** (render-dev) ⬆ P0 · Sprint 2 ✅ done 2026-11-25. Street-level frame went from 0.87 to 0.42 mean brightness in the bottom third, and the largest bloom blob from 11% to 0.15%. Orbit views unchanged. Avenue lamps no longer cross Central Park. New bloom threshold at street level: 0.86 at Night and Dusk, 0.94 at Day. M-014 car emissives stay at or below 0.86.
 Why: every persona's fly screenshots are blown out to white. This hides the car, kills the hint (top issue 2) and turns "between the towers" into fog. (Q40-20, Q6-09, Q40-03, Q75-03)
 - Region: lamp heads and blade signs 1171-1217, LED banner colour at ~1273, the lamp-pool shader 1657-1665, and the mood table bloom values 2108-2130.
 - Fly shot at Night and Dusk: no single bloom blob covers more than 3% of the frame, the road under the car is not near-white (mean luminance of the bottom third below 0.6 by eye or a pixel check), and lamp *pools* remain visible.
@@ -170,7 +170,7 @@ Why: the loader promises 1910→2140. The city should show old bones under new l
 **M-012 Orbit as a slow landmark tour** (gameplay-dev). The auto orbit drifts past the megatower, the bridges, Liberty and the park. Shots at `--after` 0/15/30 s show three landmarks, and any drag hands control back immediately.
 **M-013 Drone show to GPU** (perf-qa-dev). Move the 900-point morph to a vertex shader. The dusk orbit shows no visual change and mobile ms/frame drops.
 **M-020 Cockpit view cleanup** (render-dev, after M-014). The dash neon blooms into a slab, the dash text duplicates the HUD, and in portrait the dash is cropped (Q40-09). Region: cockpit/dash 1431-1554.
-**M-021 Postcard** (gameplay-dev). One button saves a PNG of the current orbit view, which is the thing Q40 wanted to share. Only if cheap: `preserveDrawingBuffer` must not cost perf.
+**M-022 Postcard** (gameplay-dev). One button saves a PNG of the current orbit view, which is the thing Q40 wanted to share. Only if cheap: `preserveDrawingBuffer` must not cost perf.
 **Watch:** searchlight beams read as sticks from top-down views (Q6-14a, region 1018-1038). Fold this into M-012 or M-011 if it is touched anyway.
 
 ### Blocked / pending owner decision
@@ -183,7 +183,7 @@ Why: the park is the city's green heart and the one place where the two eras mee
 
 **M-020 Detailed monorail** (render-dev #3) ✅ done (owner request). The guideway is an I-beam on tapered T-pylons. Cars have shaped bodies, a shader-drawn window band with lit interiors and passenger silhouettes, doors, route 21/40 livery and bellows between cars. Bullet-nose end cars. Cost: +3 draw calls, +66k triangles. Follow-up: the skirts look heavy in Day; optional stations were skipped.
 
-**M-021 Central Park from reference photos** (render-dev) 🔶 in-progress (owner request, 2026-11-25). Rework the park to match the owner's 5 reference photos: the real south-to-north layout from the aerial, Bethesda Fountain with the Angel, the park drive with a carriage, Bow Bridge with rowboats, the Mall's elm canopy, and autumn foliage. The 2140 layer stays, but subtle. The photos are kept out of the repo.
+**M-021 Central Park from reference photos** (render-dev) ✅ done 2026-11-25 (owner request). Known nits: fountain streams are thick and opaque; the top-down view is mirrored left to right versus the aerial photo because of the world axes. Rework the park to match the owner's 5 reference photos: the real south-to-north layout from the aerial, Bethesda Fountain with the Angel, the park drive with a carriage, Bow Bridge with rowboats, the Mall's elm canopy, and autumn foliage. The 2140 layer stays, but subtle. The photos are kept out of the repo.
 
 **M-015 Real NYC/NJ footprints** (render-dev + gameplay-dev). ⛔ Blocked on network only: owner approved the scope (Manhattan + Jersey City + Hoboken) on 2026-11-24. Data source is OpenStreetMap; Google 3D Tiles was ruled out because its terms forbid extracting building geometry.
 Rebuild the city from OpenStreetMap building footprints and heights for Manhattan plus the Jersey City/Hoboken waterfront, with 2140 upgrades grown from each real building.
@@ -200,7 +200,7 @@ M-002 ✅, M-003 ✅, M-001 carried into Sprint 2.
 
 ## Sprint 2
 
-Status 2026-11-25: resumed M-007 and M-021 from `wip/`. Earlier: 2026-11-24 18:11 EST resumed after the owner's pause. M-006 and M-010 continue from the patches in `wip/`. M-020 Detailed monorail (render-dev, owner request) runs alongside. Line numbers below predate the M-014 car merge (+~100 lines after line 1383); find regions by their section comments.
+Status 2026-11-25: M-007 and M-021 merged and verified. Sprint 2 render work is done; Sprint 3 waits for the owner's go-ahead. Earlier the same day: resumed M-007 and M-021 from `wip/`. Earlier: 2026-11-24 18:11 EST resumed after the owner's pause. M-006 and M-010 continue from the patches in `wip/`. M-020 Detailed monorail (render-dev, owner request) runs alongside. Line numbers below predate the M-014 car merge (+~100 lines after line 1383); find regions by their section comments.
 : make "dropping in" work
 
 Carry-overs occupy regions that nobody else may touch: **M-001** (`tools/shot.js` plus the loop end 2160-2181) and **M-014** (car section 1383-1430).
