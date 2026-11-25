@@ -335,16 +335,25 @@ function rand(){ _s|=0; _s=_s+0x6D2B79F5|0; let t=Math.imul(_s^_s>>>15,1|_s); t=
 const rr=(a,b)=>a+(b-a)*rand();
 const pick=a=>a[Math.floor(rand()*a.length)];
 const isMobile=/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)||Math.min(screen.width,screen.height)<700;
+/* phone decimation (M-004): every generator runs its full desktop rand() sequence on all tiers, so phones build the same city;
+   phones then drop a share of the results by a deterministic hash of the item's key, never by rand(). mkeep(f,...k) is true for
+   about a fraction f of keys on phones and always true on desktop. */
+const mkeep=(f,...k)=>{ if(!isMobile) return true; let h=0x9e3779b9;
+  for(const v of k){ h=Math.imul(h^(Math.round(v*8)|0),0x85ebca6b); h^=h>>>13; h=Math.imul(h,0xc2b2ae35); h^=h>>>16; }
+  return (h>>>0)/4294967296<f; };
 
 /* ---------- renderer ---------- */
 const canvas=document.getElementById('c');
 let renderer;
-try{ renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'}); }
+// phones: no MSAA on the default framebuffer; the composer renders into its own target and only a full-screen copy reaches it (M-004)
+try{ renderer=new THREE.WebGLRenderer({canvas,antialias:!isMobile,powerPreference:'high-performance'}); }
 catch(e){ document.getElementById('err').style.display='grid'; document.getElementById('loader').remove(); return; }
 const DPR=Math.min(window.devicePixelRatio||1,isMobile?1.5:2);
 renderer.setPixelRatio(DPR); renderer.setSize(innerWidth,innerHeight);
 renderer.toneMapping=THREE.ACESFilmicToneMapping;
 renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+/* phones (M-004): a 1024² shadow map that is not redrawn every frame; see tick() */
+if(isMobile){ renderer.shadowMap.autoUpdate=false; renderer.shadowMap.needsUpdate=true; }
 
 const scene=new THREE.Scene();
 scene.fog=new THREE.FogExp2(0x000000,0.0002);
@@ -394,7 +403,7 @@ function updateEnv(){ const rt=pmrem.fromScene(envScene,0.02,0.1,500); scene.env
 /* ---------- lights ---------- */
 const hemi=new THREE.HemisphereLight(0xffffff,0x444444,0.5); scene.add(hemi);
 const sun=new THREE.DirectionalLight(0xffffff,1.5); sun.castShadow=true;
-const SM=isMobile?2048:4096; sun.shadow.mapSize.set(SM,SM);
+const SM=isMobile?1024:4096; sun.shadow.mapSize.set(SM,SM);
 Object.assign(sun.shadow.camera,{left:-1900,right:1900,top:1900,bottom:-1900,near:100,far:8500});
 sun.shadow.camera.updateProjectionMatrix();
 sun.shadow.bias=-0.0004; sun.shadow.normalBias=1.2;
@@ -709,7 +718,7 @@ function borough(xA,xB,zA,zB,sp){
     addTower(cx,cz,rr(10,sp-10),rr(10,sp-10),h,h<70);
   }
 }
-const BSP=isMobile?58:40;
+const BSP=40; // same on phones (M-004): the outer-borough grid feeds rand(), so a phone spacing built a different city
 borough(720,2300,-2300,3000,BSP); borough(-2300,-640,-2300,3000,BSP); borough(-560,620,1820,3000,BSP);
 
 /* ---------- instancing ---------- */
@@ -1848,25 +1857,25 @@ AV.forEach((ax,i)=>{
   let zM=1580; while(!ok(zM)&&zM>zm) zM-=10;
   if(Math.abs(ax)<150) zM=Math.min(zM,PARK.z0-12);
   if(zM-zm<60) return;
-  const n=Math.floor((zM-zm)/(isMobile?32:24)), lanes=[-4.5,-1.5,1.5,4.5];
+  const n=Math.floor((zM-zm)/24), lanes=[-4.5,-1.5,1.5,4.5];
   for(let k=0;k<n;k++){ const lane=lanes[k%4], d=edge?(lane<0?1:-1):dir;
-    cars.push({axis:'z',fixed:ax+lane,y:0.35,pos:rr(zm,zM),min:zm,max:zM,dir:d,speed:rr(16,32),w:2,hh:1.4,l:rr(4,4.8),c:C(pick(POD))}); }
+    const c={axis:'z',fixed:ax+lane,y:0.35,pos:rr(zm,zM),min:zm,max:zM,dir:d,speed:rr(16,32),w:2,hh:1.4,l:rr(4,4.8),c:C(pick(POD))}; if(mkeep(0.75,1,i,k)) cars.push(c); }
 });
 for(let k=1;k<95;k+=5){
   const zs=-1440+k*ST; if(zs>PARK.z0-10&&zs<PARK.z1+10) continue;
   const hw=halfW(zs)-8; if(hw<60) continue;
-  const dir=k%2?1:-1, n=Math.floor(2*hw/(isMobile?36:26));
-  for(let j=0;j<n;j++) cars.push({axis:'x',fixed:zs+(j%2?1.6:-1.6),y:0.35,pos:rr(-hw,hw),min:-hw,max:hw,dir,speed:rr(10,22),w:2,hh:1.4,l:rr(4,4.8),c:C(pick(POD))});
+  const dir=k%2?1:-1, n=Math.floor(2*hw/26);
+  for(let j=0;j<n;j++){ const c={axis:'x',fixed:zs+(j%2?1.6:-1.6),y:0.35,pos:rr(-hw,hw),min:-hw,max:hw,dir,speed:rr(10,22),w:2,hh:1.4,l:rr(4,4.8),c:C(pick(POD))}; if(mkeep(0.72,2,k,j)) cars.push(c); }
 }
 const FLY0=cars.length;
 [95,155,230].forEach((alt,li)=>{
   AV.forEach((ax,i)=>{ if((i+li)%2) return;
-    for(let k=0;k<(isMobile?10:16);k++){ const d=k%2?1:-1;
-      cars.push({axis:'z',fixed:ax+d*3.5,y:alt+d*2,pos:rr(-1600,1700),min:-1600,max:1700,dir:d,speed:rr(45,85),w:2.6,hh:0.9,l:5.5,c:C(pick([0xe8ecf2,0x1a1d26,0x3b4a5c])),fly:1}); }
+    for(let k=0;k<16;k++){ const d=k%2?1:-1;
+      const c={axis:'z',fixed:ax+d*3.5,y:alt+d*2,pos:rr(-1600,1700),min:-1600,max:1700,dir:d,speed:rr(45,85),w:2.6,hh:0.9,l:5.5,c:C(pick([0xe8ecf2,0x1a1d26,0x3b4a5c])),fly:1}; if(mkeep(0.62,3,li,i,k)) cars.push(c); }
   });
   for(let k=2+li*3;k<95;k+=11){ const zs=-1440+k*ST;
-    for(let j=0;j<(isMobile?7:11);j++){ const d=j%2?1:-1;
-      cars.push({axis:'x',fixed:zs+d*3,y:alt+12,pos:rr(-900,900),min:-900,max:900,dir:d,speed:rr(40,75),w:2.6,hh:0.9,l:5.5,c:C(0x1a1d26),fly:1}); }
+    for(let j=0;j<11;j++){ const d=j%2?1:-1;
+      const c={axis:'x',fixed:zs+d*3,y:alt+12,pos:rr(-900,900),min:-900,max:900,dir:d,speed:rr(40,75),w:2.6,hh:0.9,l:5.5,c:C(0x1a1d26),fly:1}; if(mkeep(0.64,4,li,k,j)) cars.push(c); }
   }
 });
 const carMesh=new THREE.InstancedMesh(boxBase,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.25,metalness:0.5}),cars.length);
@@ -1922,12 +1931,13 @@ const boardFS=`uniform float uTime,uNight,uSeed; uniform vec3 uA,uB;
   }`;
 {
   const cands=B.filter(b=>b.rot===0&&b.y0===0&&b.h>90&&b.w>16&&b.d>16&&Math.abs(b.x)<700);
-  const nB=Math.min(isMobile?24:60,cands.length);
+  const nB=Math.min(60,cands.length); // phones keep ~40% (mkeep), after every rand() for the board is drawn
   for(let i=0;i<nB;i++){
     const b=cands[Math.floor(rand()*cands.length)], face=Math.floor(rand()*4);
     const along=face<2?b.w:b.d, bw=along*rr(0.55,0.85), bh=Math.min(bw*rr(0.6,1.6),b.h*0.35);
     const y=b.h*rr(0.3,0.75);
     const u=THREE.UniformsUtils.merge([THREE.UniformsLib.fog,{uA:{value:pick(NEON).clone()},uB:{value:pick(NEON).clone().multiplyScalar(0.4)},uSeed:{value:rand()}}]);
+    if(!mkeep(0.4,5,i)) continue;
     u.uTime=uTime; u.uNight=uNight;
     const mat=new THREE.ShaderMaterial({uniforms:u,vertexShader:boardVS,fragmentShader:boardFS,fog:true,side:THREE.DoubleSide});
     const m=new THREE.Mesh(new THREE.PlaneGeometry(bw,bh),mat);
@@ -1966,12 +1976,12 @@ const padKey=new Set(PADS.map(p=>p.x.toFixed(2)+','+p.z.toFixed(2)));
 const CLUT=[],SOLAR=[],ANT=[];
 B.forEach(b=>{
   if(b.rot!==0||b.w<8||b.d<8||b.y0+b.h>320) return;
-  if(isMobile&&rand()<0.7) return;
   if(padKey.has(b.x.toFixed(2)+','+b.z.toFixed(2))) return;
-  const top=b.y0+b.h, r=rand();
+  const top=b.y0+b.h, r=rand(), n0=[CLUT.length,SOLAR.length,ANT.length];
   if(r<0.22) SOLAR.push({x:b.x,z:b.z,y:top,w:b.w*0.72,d:b.d*0.6});
   else if(r<0.6){ const n=1+Math.floor(rand()*3); for(let k=0;k<n;k++) CLUT.push({x:b.x+rr(-b.w*0.35,b.w*0.35),z:b.z+rr(-b.d*0.35,b.d*0.35),y:top,s:rr(1.5,3.2)}); }
   if(rand()<0.1) ANT.push({x:b.x+rr(-b.w*0.3,b.w*0.3),z:b.z+rr(-b.d*0.3,b.d*0.3),y:top,h:rr(8,24)});
+  if(!mkeep(0.3,6,b.x,b.z,top)){ CLUT.length=n0[0]; SOLAR.length=n0[1]; ANT.length=n0[2]; } // phones: same rand() draws, ~30% of roofs kept
 });
 instanced(boxBase,new THREE.MeshStandardMaterial({color:C(0x8a8f98),roughness:0.7,metalness:0.3}),CLUT,(d,b)=>{d.position.set(b.x,b.y,b.z);d.scale.set(b.s,b.s*0.7,b.s*1.3);},false,false);
 instanced(boxBase,new THREE.MeshStandardMaterial({color:C(0x16244a),roughness:0.2,metalness:0.85}),SOLAR,(d,b)=>{d.position.set(b.x,b.y,b.z);d.scale.set(b.w,0.5,b.d);},false,false);
@@ -2149,10 +2159,10 @@ function updateLampsExtra(){ xLampPts.material.opacity=cur.lamp; }
   const CORN=[], AWN=[], ACU=[], DET=[], BAL=[], RAIL=[], BNE=[], CWK=[];
   const FAB=[0x9c1f2e,0x1f4e8c,0x2f6b3a,0xc8a03a,0x1b1b1f,0x7a2d6b,0xd9d4c7,0x0e7f8c];
   const FACES=[{nx:0,nz:1,yaw:0},{nx:0,nz:-1,yaw:Math.PI},{nx:1,nz:0,yaw:Math.PI/2},{nx:-1,nz:0,yaw:-Math.PI/2}];
-  const keep=isMobile?0.45:1;
+  const keep=1, FAC=[CORN,AWN,ACU,DET,BAL,RAIL,BNE]; // phones drop ~55% of facades by mkeep (below), after the same rand() draws
   B.forEach(b=>{
     if(b.y0!==0||b.rot!==0||Math.abs(b.x)>330||b.h<8||rand()>keep) return;
-    const old=b.style===0, top=b.h; let fe=false, balFaces=0;
+    const old=b.style===0, top=b.h, n0=FAC.map(a=>a.length); let fe=false, balFaces=0;
     CORN.push({x:b.x,z:b.z,y:0,w:b.w+0.35,d:b.d+0.35,h:0.55,c:b.c.clone().multiplyScalar(0.7)});
     CORN.push({x:b.x,z:b.z,y:4.05,w:b.w+0.7,d:b.d+0.7,h:0.2,c:b.c.clone().multiplyScalar(1.15)});
     if(old&&top<140&&top>12){
@@ -2169,12 +2179,13 @@ function updateLampsExtra(){ xLampPts.material.opacity=cur.lamp; }
       /* window air-conditioners, lined up with the window grid */
       if(old&&top<100){
         const tgx=-f.nz, tgz=f.nx, cH0=fxp*tgx+fzp*tgz, nk=Math.floor((along-2.6)/2.6), floors=Math.min(Math.floor(top/3.6)-1,11);
-        for(let k=0;k<(isMobile?1:3);k++){
+        for(let k=0;k<3;k++){
           if(rand()<0.3||nk<1||floors<3) continue;
           const kk=Math.floor((cH0-along/2+1.3)/2.6)+Math.floor(rand()*nk), cH=(kk+0.5)*2.6;
           if(Math.abs(cH-cH0)>along/2-1.3) continue; if(((cH/10.4)%1+1)%1<0.24) continue;
           const j=2+Math.floor(rand()*(floors-1)), dl=cH-cH0;
-          ACU.push({x:fxp+tgx*dl+f.nx*0.22,z:fzp+tgz*dl+f.nz*0.22,y:j*3.6+0.98,w:0.72,h:0.46,d:0.5,yaw:f.yaw,c:C(pick([0xd9d6cc,0xbfc3c7,0xe8e4da]))});
+          const ac={x:fxp+tgx*dl+f.nx*0.22,z:fzp+tgz*dl+f.nz*0.22,y:j*3.6+0.98,w:0.72,h:0.46,d:0.5,yaw:f.yaw,c:C(pick([0xd9d6cc,0xbfc3c7,0xe8e4da]))};
+          if(!isMobile||k===0) ACU.push(ac); // phones: one unit per face, same rand() draws
         }
       }
       /* iron fire escapes */
@@ -2203,6 +2214,7 @@ function updateLampsExtra(){ xLampPts.material.opacity=cur.lamp; }
         }
       }
     });
+    if(!mkeep(0.45,7,b.x,b.z)) FAC.forEach((a,i)=>{ a.length=n0[i]; });
   });
   /* zebra crosswalks at intersections */
   AV.forEach(ax=>{
@@ -2289,7 +2301,8 @@ const LIFE=[streetPeopleM,legM,armM,rBodyM,rHeadM,rVisM,botM,botLM];
 let lifeAcc=0;
 function updateStreetLife(dt,t,frame){
   const far=!drive.on&&camera.position.distanceTo(controls.target)>900;
-  lifeAcc+=dt; if(far&&frame%8!==0) return;
+  LIFE.forEach(m=>{ m.visible=!far; }); // M-004: sub-pixel beyond ~900 m, so far views skip their draws and triangles
+  lifeAcc+=dt; if(far) return; // positions catch up (lifeAcc) on the first near frame
   const step=lifeAcc; lifeAcc=0;
   const pA=streetPeopleM.instanceMatrix.array,lA=legM.instanceMatrix.array,aA=armM.instanceMatrix.array;
   const rbA=rBodyM.instanceMatrix.array,rhA=rHeadM.instanceMatrix.array,rvA=rVisM.instanceMatrix.array,bA=botM.instanceMatrix.array,blA=botLM.instanceMatrix.array;
@@ -3168,6 +3181,7 @@ const composer=new THREE.EffectComposer(renderer,rt);
 composer.setPixelRatio(DPR); composer.setSize(innerWidth,innerHeight);
 composer.addPass(new THREE.RenderPass(scene,camera));
 const bloom=new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),0.8,0.55,0.7);
+if(isMobile){ const setS=bloom.setSize.bind(bloom); bloom.setSize=(w,h)=>setS(w/2,h/2); } // phones: bloom mip chain at half resolution (M-004)
 composer.addPass(bloom);
 composer.addPass(new THREE.ShaderPass(THREE.GammaCorrectionShader));
 
@@ -3187,6 +3201,7 @@ function apply(){
   sunDir.set(Math.cos(el)*Math.sin(cur.az),Math.sin(el),Math.cos(el)*Math.cos(cur.az));
   sun.position.copy(sun.target.position).addScaledVector(sunDir,3800);
   sun.color.copy(cur.sunCol); sun.intensity=cur.sunI;
+  sun.castShadow=cur.night<0.95; // M-004: no shadow pass at Night (moonlight 0.2) on any tier
   hemi.color.copy(cur.hemiSky); hemi.groundColor.copy(cur.hemiGround); hemi.intensity=cur.hemiI;
   skyU.top.value.copy(cur.top); skyU.fogC.value.copy(cur.fog); skyU.horizon.value.copy(cur.hor); skyU.bottom.value.copy(cur.bot);
   skyU.sunDir.value.copy(sunDir); skyU.sunColor.value.copy(cur.sunGlow); skyU.sunSize.value=cur.sunSize; skyU.stars.value=cur.stars; skyU.aurora.value=cur.aur;
@@ -3232,6 +3247,9 @@ function tick(){
   const dt=Math.min(clock.getDelta(),0.05); uTime.value+=dt; const t=uTime.value;
   const diff=step(dt);
   if(diff>0.003&&frame%14===0) updateEnv();
+  /* phones' 1024² shadow map (M-004) is redrawn every 8th frame in orbit (towers are static; airships and trains drift slowly)
+     and every 2nd while driving, so the car's own shadow keeps up. At Night the sun casts no shadow on any tier (apply). */
+  if(isMobile) renderer.shadowMap.needsUpdate=frame%(drive.on?2:8)===0;
   updateCars(dt,t); updateTrains(dt); updateExtras(dt,t); updateStreetLife(dt,t,frame); updatePark(dt,t,frame); updateLiberty(t); updateBridges(); updateLampsExtra();
   beamMeshes.forEach(b=>{ b.m.rotation.x=Math.sin(t*0.25+b.ph)*0.32; b.m.rotation.z=Math.cos(t*0.19+b.ph*1.3)*0.32; });
   warnPts.material.opacity=(Math.sin(t*2.4)>0.2?1:0.15)*Math.max(cur.lamp,0.35);
@@ -3242,7 +3260,7 @@ function tick(){
   requestAnimationFrame(tick);
 }
 /* debug hook for tools/shot.js --metrics (read-only; no effect on rendering) */
-window.__m2140={renderer,camera,controls,scene,isMobile,DPR,info(){ let casters=0; scene.traverse(o=>{ if((o.isMesh||o.isPoints)&&o.castShadow) casters++; }); const r=renderer.info; return {calls:r.render.calls,triangles:r.render.triangles,points:r.render.points,lines:r.render.lines,geometries:r.memory.geometries,textures:r.memory.textures,programs:r.programs?r.programs.length:0,shadowCasters:casters,shadowMap:renderer.shadowMap.enabled,shadowMapSize:sun.shadow.mapSize.x,isMobile,dpr:renderer.getPixelRatio()}; }};
+window.__m2140={renderer,camera,controls,scene,isMobile,DPR,info(){ let casters=0; scene.traverse(o=>{ if((o.isMesh||o.isPoints)&&o.castShadow) casters++; }); const r=renderer.info; return {calls:r.render.calls,triangles:r.render.triangles,points:r.render.points,lines:r.render.lines,geometries:r.memory.geometries,textures:r.memory.textures,programs:r.programs?r.programs.length:0,shadowCasters:casters,shadowMap:renderer.shadowMap.enabled,shadowMapSize:sun.shadow.mapSize.x,sunCastShadow:sun.castShadow,shadowAutoUpdate:renderer.shadowMap.autoUpdate,bloomRes:bloom.renderTargetBright.width+'x'+bloom.renderTargetBright.height,isMobile,dpr:renderer.getPixelRatio()}; }};
 tick();
 }
 function startBoot(){ try{ boot(); }catch(e){ console.error(e); if(window.__loadErr) window.__loadErr(e.message||String(e)); } }

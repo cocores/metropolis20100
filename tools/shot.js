@@ -4,6 +4,7 @@
 // Usage: node tools/shot.js [page.html] [out.png] [flags]
 //   --wait=ms         time to wait after load before eval/metrics/screenshot (default 15000)
 //   --eval="js"       expression run in the page after --wait; its result is printed as "eval"
+//   --evalFile=path   like --eval, but the expression is read from a file
 //   --after=ms        time to wait after --eval (default 4000)
 //   --w= --h=         viewport size (default 1280x800; ignored by --mobile unless given)
 //   --mobile          phone preset: 390x844, DPR 3, touch, iPhone Safari UA
@@ -36,6 +37,8 @@ const pos = args.filter(a => !a.startsWith('--'));
 const page = path.resolve(pos[0] || path.join(__dirname, '..', 'index.html'));
 const out = path.resolve(pos[1] || path.join(__dirname, 'out', 'render.png'));
 const wait = +(flags.wait || 15000);
+// --evalFile=path: read the --eval expression from a file (long scripts, no shell quoting).
+if (flags.evalFile && !flags.eval) flags.eval = fs.readFileSync(path.resolve(String(flags.evalFile)), 'utf8');
 const THREE_DIR = path.join(__dirname, 'node_modules', 'three');
 
 const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
