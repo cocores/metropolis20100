@@ -237,7 +237,7 @@ Carry-overs occupy regions that nobody else may touch: **M-001** (`tools/shot.js
 
 **Coordination:** M-007 must not edit car emissives (1383-1430). It posts its new bloom threshold for M-014 to respect. M-006 must not touch HUD CSS outside 121/130.
 Sprint exit: all tickets merged one at a time. After each merge, re-shoot orbit night, orbit dusk, fly and `--mobile` fly, all error-free. QA personas re-run their fly sessions.
-Sprint 3 (queued): M-016 + M-017 (gameplay-dev), M-004 (perf-qa-dev), and M-008/M-018 split once M-006 is in.
+Sprint 3 (started 2026-11-25, owner go-ahead): M-016 + M-017 (gameplay-dev) 🔶 and M-004 (perf-qa-dev) 🔶 are running. M-008/M-018 (HUD and dock) wait until M-024 merges, because both edit the dock.
 
 ## M-001 baseline (2026-11-24, perf-qa-dev)
 
