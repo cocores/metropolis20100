@@ -114,7 +114,7 @@ Why: "must work on phones" is a hard constraint, and today it is untested.
 
 ### P1
 
-**M-016 Steering that doesn't fight you** (gameplay-dev)
+**M-016 Steering that doesn't fight you** (gameplay-dev) ✅ done 2026-11-25. Stick held sideways → 22 km/h; KeyB alone → 241 km/h; climb +54.7 m in 48 frames. Walls: 121% speed kept at 30°, 85% at 60°. A head-on (90°) hit still stops the car, deliberately. Follow-ups: the car snaps to the wall in one frame (a small jolt); `window.__drive` is a test hook.
 Why: the car should go where a child's thumb, or anyone's, means it to. (Q6-01, Q40-05, Q40-06, Q40-15)
 - Region: `updateDrive` input and physics, 1756-1776.
 - Touch auto-cruise: a mostly-sideways stick keeps ≥ 20 km/h forward. Check with eval: dispatch pointer events holding `#stick` at its left edge for 60 frames, then read `#spd` ≥ 20.
@@ -122,7 +122,7 @@ Why: the car should go where a child's thumb, or anyone's, means it to. (Q6-01, 
 - Wall impacts keep the tangential velocity (slide) with a small bounce. Eval: driving into a facade at 150 km/h leaves speed ≥ 30% after 6 frames.
 - Climb rate ramps when Up is held. Eval: Space held for 48 frames gains ≥ 25 m.
 
-**M-017 Chase camera never enters buildings** (gameplay-dev)
+**M-017 Chase camera never enters buildings** (gameplay-dev) ✅ done 2026-11-25. The camera ray is tested against 6 pull-in spots. The facade repro went from 23.3% black with the camera inside the building to 7.9% black with the whole car visible.
 Why: a black screen is the one true dead end in the product. (Q40-01, Q6-01)
 - Region: chase-camera block 1791-1799.
 - The camera ray from the car to `_want` is tested with `collide()` and the camera is pulled in and up when blocked. Eval: steer into a facade (`age40-k-climb.png` repro), then shot: the car is visible and less than 20% of the frame is black.
@@ -237,7 +237,7 @@ Carry-overs occupy regions that nobody else may touch: **M-001** (`tools/shot.js
 
 **Coordination:** M-007 must not edit car emissives (1383-1430). It posts its new bloom threshold for M-014 to respect. M-006 must not touch HUD CSS outside 121/130.
 Sprint exit: all tickets merged one at a time. After each merge, re-shoot orbit night, orbit dusk, fly and `--mobile` fly, all error-free. QA personas re-run their fly sessions.
-Sprint 3 (started 2026-11-25, owner go-ahead): M-016 + M-017 (gameplay-dev) 🔶 running; M-004 ✅ merged. M-008/M-018 (HUD and dock) wait until M-024 merges, because both edit the dock.
+Sprint 3 (started 2026-11-25, owner go-ahead): M-016 + M-017 ✅ merged; M-004 ✅ merged. M-008/M-018 (HUD and dock) wait until M-024 merges, because both edit the dock.
 
 ## M-001 baseline (2026-11-24, perf-qa-dev)
 
