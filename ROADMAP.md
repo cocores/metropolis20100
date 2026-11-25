@@ -95,7 +95,7 @@ Why: every persona's fly screenshots are blown out to white. This hides the car,
 - Fly shot at Night and Dusk: no single bloom blob covers more than 3% of the frame, the road under the car is not near-white (mean luminance of the bottom third below 0.6 by eye or a pixel check), and lamp *pools* remain visible.
 - The default orbit shot is unchanged in character (window grids and hero spires still read, as in the M-002 shots). `--metrics` calls do not increase.
 
-**M-006 Fly mode: the first ten seconds** (gameplay-dev) · Sprint 2
+**M-006 Fly mode: the first ten seconds** (gameplay-dev) · Sprint 2 ✅ done
 Why: "dropping in" should be a reveal you control. Today the first frame is a glare canyon, the car is already moving, and mouse users can't steer.
 (Q75-02, Q75-01, Q40-08, Q75-03, Q40-03, Q40-06, Q75-11, Q6-11, Q75-15, Q40-15, Q6-01)
 - Region: `enterDrive` 1711-1721, `.keys` CSS 121, the `pointer:coarse` rule at 130, hint markup at 214, and the stick and vbtns markup at 219-220. **Not** `updateDrive`.
