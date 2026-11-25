@@ -931,32 +931,204 @@ for(let z=1450;z>=-1300;z-=110) loopPts.push(new THREE.Vector3(-(halfW(z)+40),38
 loopPts.push(new THREE.Vector3(-80,38,-1530),new THREE.Vector3(80,38,-1530));
 const loop=new THREE.CatmullRomCurve3(loopPts,true,'centripetal');
 {
-  const t=new THREE.Mesh(new THREE.TubeGeometry(loop,900,2.2,8,true),darkMat); t.castShadow=true; scene.add(t);
-  const lg=new THREE.Mesh(new THREE.TubeGeometry(loop,900,0.5,6,true),new THREE.MeshBasicMaterial({color:C(0x22e6ff).multiplyScalar(1.8)}));
-  lg.position.y=-2.4; scene.add(lg);
-  const PY=[]; for(let i=0;i<90;i++){ const p=loop.getPointAt(i/90); PY.push({x:p.x,z:p.z}); }
-  instanced(boxBase,whiteMat,PY,(d,b)=>{d.position.set(b.x,-2,b.z);d.scale.set(3,38,3);},true,false);
+  /* guideway: an I-beam swept along the loop (flat-shaded), glowing rail edges + underside line, tapered T pylons */
+  const NS=isMobile?380:760, up=new THREE.Vector3(0,1,0), FR=[];
+  for(let i=0;i<NS;i++){ const u=i/NS, p=loop.getPointAt(u), t=loop.getTangentAt(u); t.y=0; t.normalize(); FR.push({p,s:new THREE.Vector3().crossVectors(t,up).normalize()}); }
+  const sweep=polys=>{ // closed CCW (x=side,y=up) polygons -> hard-edged quads along the loop
+    const pos=[], nor=[], a=new THREE.Vector3(), b=new THREE.Vector3(), c=new THREE.Vector3(), d=new THREE.Vector3(), n=new THREE.Vector3(), e=new THREE.Vector3(), f=new THREE.Vector3();
+    const P=(fr,x,y,o)=>{ o.copy(fr.p).addScaledVector(fr.s,x); o.y+=y; return o; };
+    polys.forEach(poly=>{ for(let k=0;k<poly.length;k++){
+      const [x0,y0]=poly[k], [x1,y1]=poly[(k+1)%poly.length], el=Math.hypot(x1-x0,y1-y0), nx=(y1-y0)/el, ny=-(x1-x0)/el;
+      for(let i=0;i<NS;i++){
+        const f0=FR[i], f1=FR[(i+1)%NS];
+        P(f0,x0,y0,a); P(f0,x1,y1,b); P(f1,x1,y1,c); P(f1,x0,y0,d);
+        n.copy(f0.s).multiplyScalar(nx); n.y+=ny; n.normalize();
+        const flip=e.subVectors(b,a).cross(f.subVectors(c,a)).dot(n)<0;
+        (flip?[a,c,b,a,d,c]:[a,b,c,a,c,d]).forEach(v=>{ pos.push(v.x,v.y,v.z); nor.push(n.x,n.y,n.z); });
+      } } });
+    const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3)); return g;
+  };
+  const beam=new THREE.Mesh(sweep([[[-1.2,-3.0],[1.2,-3.0],[1.2,-2.5],[0.6,-2.25],[0.6,-0.15],[1.45,0.05],[1.45,0.6],[-1.45,0.6],[-1.45,0.05],[-0.6,-0.15],[-0.6,-2.25],[-1.2,-2.5]]]),darkMat);
+  beam.castShadow=true; scene.add(beam);
+  const rail=new THREE.Mesh(sweep([[[1.43,0.2],[1.53,0.2],[1.53,0.4],[1.43,0.4]],[[-1.53,0.2],[-1.43,0.2],[-1.43,0.4],[-1.53,0.4]],[[-0.55,-3.25],[0.55,-3.25],[0.55,-3.0],[-0.55,-3.0]]]),
+    new THREE.MeshBasicMaterial({color:C(0x22e6ff).multiplyScalar(1.8)}));
+  scene.add(rail);
+  const sh=new THREE.Shape([[-1.7,0],[1.7,0],[1.0,30.6],[2.5,34.4],[2.5,37.0],[-2.5,37.0],[-2.5,34.4],[-1.0,30.6]].map(([x,y])=>new THREE.Vector2(x,y)));
+  const pg=new THREE.ExtrudeGeometry(sh,{depth:1.9,bevelEnabled:true,bevelThickness:0.25,bevelSize:0.25,bevelSegments:1,curveSegments:1}); pg.translate(0,0,-0.95);
+  const PY=[]; for(let i=0;i<90;i++){ const p=loop.getPointAt(i/90), t=loop.getTangentAt(i/90); PY.push({x:p.x,z:p.z,r:Math.atan2(t.x,t.z)}); }
+  instanced(pg,whiteMat,PY,(d,b)=>{d.position.set(b.x,-2,b.z);d.rotation.set(0,b.r,0);d.scale.set(1,1,1);},true,false);
 }
-const TRAIN=12;
-const trainMesh=new THREE.InstancedMesh(new THREE.BoxGeometry(5,4.4,15),new THREE.MeshStandardMaterial({color:C(0xf2f5f9),roughness:0.2,metalness:0.4,emissive:C(0x22e6ff),emissiveIntensity:0.0}),TRAIN*2);
-trainMesh.frustumCulled=false; trainMesh.castShadow=true; scene.add(trainMesh);
+/* train geometry: lofted rounded sections; one InstancedMesh each for middle cars, nose cars and gangway bellows */
+const TRAIN=12, PITCH=0.0028*loop.getLength(), CL=Math.min(16,PITCH-1.6), HZ=CL/2, NOSE_L=7.5;
+function trainRing(n,hard){ // right half bottom->top, mirrored; CCW seen from +z
+  const R=[[0,-2.0]];
+  for(let i=0;i<=n;i++){ const a=-Math.PI/2+i/n*Math.PI/2; R.push([2.0+0.5*Math.cos(a),-1.5+0.5*Math.sin(a)]); }
+  R.push([2.5,-0.3]);
+  for(let i=0;i<=n+1;i++){ const a=i/(n+1)*Math.PI/2; R.push([0.9+1.6*Math.cos(a),0.9+1.5*Math.sin(a)]); }
+  return R.concat([[0,2.4]],R.slice(1).reverse().map(([x,y])=>[-x,y]));
+}
+const hardRing=r=>r.flatMap(p=>[p,p]);
+function loft(gb,ring,st,capA,capB){
+  const P=ring.length, base=gb.n;
+  st.forEach(s=>ring.forEach(([x,y])=>{ const q=s.f(x,y); gb.pos.push(q[0],q[1],s.z); })); gb.n+=st.length*P;
+  for(let j=0;j<st.length-1;j++) for(let k=0;k<P;k++){ const a=base+j*P+k, b=base+j*P+(k+1)%P, c=base+(j+1)*P+(k+1)%P, d=base+(j+1)*P+k; gb.idx.push(a,b,c,a,c,d); }
+  const cap=(s,front)=>{ const c0=gb.n, pts=ring.map(([x,y])=>s.f(x,y)); let cx=0,cy=0; pts.forEach(p=>{cx+=p[0];cy+=p[1];});
+    gb.pos.push(cx/P,cy/P,s.z); pts.forEach(p=>gb.pos.push(p[0],p[1],s.z)); gb.n+=P+1;
+    for(let k=0;k<P;k++){ const a=c0+1+k, b=c0+1+(k+1)%P; if(front) gb.idx.push(c0,a,b); else gb.idx.push(c0,b,a); } };
+  if(capA) cap(st[0],false); if(capB) cap(st[st.length-1],true);
+}
+function gbGeo(gb){ const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(gb.pos,3)); g.setIndex(gb.idx); g.computeVertexNormals(); return g; }
+function carGeo(nose){
+  const gb={pos:[],idx:[],n:0}, ring=trainRing(isMobile?2:4), id=(x,y)=>[x,y], sc=k=>(x,y)=>[x*k,0.2+(y-0.2)*k], zt=HZ-NOSE_L;
+  const st=[{z:-HZ,f:sc(0.94)},{z:-HZ+0.3,f:id},{z:-HZ+0.3,f:id}];
+  if(!nose) st.push({z:HZ-0.3,f:id},{z:HZ-0.3,f:id},{z:HZ,f:sc(0.94)});
+  else { const M=isMobile?8:16; st.push({z:zt,f:id});
+    for(let m=1;m<=M;m++){ const t=Math.pow(m/M,0.8), ws=Math.max(0.03,Math.sqrt(Math.max(0,1-Math.pow(t,2.2)))), hs=Math.max(0.03,Math.pow(Math.max(0,1-Math.pow(t,1.3)),0.7)), yb=-2.0+0.5*t*t;
+      st.push({z:zt+t*NOSE_L,f:(x,y)=>[x*ws,yb+(y+2.0)*hs]}); } }
+  loft(gb,ring,st,true,true);
+  // maglev skirts hugging the guideway flange
+  const ze=nose?zt+1.2:HZ-0.6, sk=hardRing([[1.6,-4.55],[1.96,-4.55],[2.0,-1.9],[1.6,-1.9]]);
+  [1,-1].forEach(sd=>{ const r=sd>0?sk:sk.map(([x,y])=>[-x,y]).reverse(), lift=(x,y)=>[x,y<-2.5?-3.2:y];
+    loft(gb,r,[{z:-HZ+0.6,f:lift},{z:-HZ+1.5,f:id},{z:ze-0.9,f:id},{z:ze,f:lift}],true,true); });
+  // roof fairing
+  const fr=[[-1.3,2.3],[1.3,2.3],[1.15,2.62],[0.6,2.82],[0,2.86],[-0.6,2.82],[-1.15,2.62]], fl=(x,y)=>[x*0.55,2.3+(y-2.3)*0.15], fe=nose?zt-0.4:HZ-1.8;
+  loft(gb,fr,[{z:-HZ+1.8,f:fl},{z:-HZ+3.4,f:id},{z:fe-1.6,f:id},{z:fe,f:fl}],true,true);
+  return gbGeo(gb);
+}
+function gangGeo(){
+  const gb={pos:[],idx:[],n:0}, ring=trainRing(isMobile?1:3).map(([x,y])=>[x*0.8,-1.85+(y+2.0)*0.9]), GL=PITCH-CL+0.8, NR=isMobile?3:7, st=[];
+  for(let r=0;r<=NR*2;r++){ const k=r%2?0.93:1; st.push({z:-GL/2+r*GL/(NR*2),f:(x,y)=>[x*k,0.1+(y-0.1)*k]}); }
+  loft(gb,ring,st,false,false); return gbGeo(gb);
+}
+const TRAIN_FRAG=`
+uniform float uNight;
+varying vec3 vLoc; varying vec3 vLN; varying float vSeed; varying vec3 vLiv; varying float vRoute; varying float vHead; varying float vVD;
+float tH(float n){ return fract(sin(n)*43758.5453); }
+float tBox(vec2 p,vec2 a,vec2 b){ return step(a.x,p.x)*step(p.x,b.x)*step(a.y,p.y)*step(p.y,b.y); }
+float tBit(float m,float s){ return mod(floor(m/pow(2.0,s)+0.001),2.0); }
+float tSeg(vec2 p,float d){
+  float m=d<0.5?63.:d<1.5?6.:d<2.5?91.:d<3.5?79.:d<4.5?102.:d<5.5?109.:d<6.5?125.:d<7.5?7.:d<8.5?127.:111.;
+  float t=0.2,r=0.;
+  r+=tBit(m,0.)*tBox(p,vec2(0.,1.-t),vec2(1.,1.)); r+=tBit(m,1.)*tBox(p,vec2(1.-t,.5),vec2(1.,1.));
+  r+=tBit(m,2.)*tBox(p,vec2(1.-t,0.),vec2(1.,.5)); r+=tBit(m,3.)*tBox(p,vec2(0.,0.),vec2(1.,t));
+  r+=tBit(m,4.)*tBox(p,vec2(0.,0.),vec2(t,.5));    r+=tBit(m,5.)*tBox(p,vec2(0.,.5),vec2(t,1.));
+  r+=tBit(m,6.)*tBox(p,vec2(0.,.5-t*.5),vec2(1.,.5+t*.5));
+  return min(r,1.)*tBox(p,vec2(0.),vec2(1.));
+}`;
+const TRAIN_MASKS=`
+float tY=vLoc.y, tZ=vLoc.z, tX=vLoc.x;
+float tNear=1.0-smoothstep(110.0,300.0,vVD);
+float tSide=smoothstep(0.55,0.75,abs(vLN.x))*step(2.2,abs(tX));
+float tNotFlat=1.0-smoothstep(0.75,0.9,abs(vLN.y));
+float tEnd=1.0-step(HZ-0.8,abs(tZ));
+float tDz=abs(abs(tZ)-HZ*0.5);
+#ifdef NOSE
+  float zt=HZ-NOSE_L, tT=clamp((tZ-zt)/NOSE_L,0.0,1.0);
+  tEnd=(1.0-step(HZ-0.8,-tZ))*(1.0-smoothstep(zt-1.0,zt-0.4,tZ));
+  tDz=abs(tZ+HZ*0.5);
+#endif
+float tBand=smoothstep(-0.14,-0.1,tY)*(1.0-smoothstep(1.2,1.24,tY))*tSide*tEnd;
+float tMz=fract((tZ+HZ)/1.6);
+float tDoorA=step(tDz,0.85)*step(-1.9,tY)*step(tY,1.5)*tSide;
+float tDoorIn=step(tDz,0.77)*step(-1.82,tY)*step(tY,1.42);
+float tDoorLine=tDoorA*(1.0-tDoorIn)*tNear;
+float tSeam=tDoorA*(1.0-step(0.03,tDz))*tNear;
+float tDoorLamp=step(tDz,0.3)*step(1.56,tY)*step(tY,1.72)*tSide*tEnd;
+float tMull=(1.0-smoothstep(0.035,0.06,tMz)*(1.0-smoothstep(0.94,0.965,tMz)))*tNear*(1.0-tDoorA);
+float tWin=tBand*(1.0-tMull)*(1.0-tDoorLine)*(1.0-tSeam);
+float tSi=floor((tZ+HZ)/0.92), tSf=fract((tZ+HZ)/0.92)-0.5, tSd=step(0.0,tX);
+float tOcc=step(tH(tSi*7.13+tSd*31.7+vSeed*91.3),0.34+0.32*tH(vSeed*5.1));
+float tHy=0.48+0.3*step(0.72,tH(tSi*3.1+vSeed*17.0+tSd*5.3));
+vec2 tHp=vec2(tSf*0.92+0.14*(tH(tSi+vSeed*3.0)-0.5),tY-tHy);
+float tHead=1.0-smoothstep(0.13,0.16,length(tHp*vec2(1.0,0.82)));
+float tTorso=(1.0-smoothstep(0.2,0.25,abs(tHp.x)+max(0.0,tHp.y+0.24)*0.9))*step(tHp.y,-0.12);
+float tSil=clamp(tHead+tTorso,0.0,1.0)*tOcc*tWin*tNear;
+float tLiv=smoothstep(-1.1,-1.07,tY)*(1.0-smoothstep(-0.8,-0.77,tY))*tNotFlat;
+float tPin=smoothstep(-1.34,-1.32,tY)*(1.0-smoothstep(-1.27,-1.25,tY))*tNotFlat*tNear;
+float tTx=-tZ*sign(tX);
+vec2 tDp=vec2((tTx-(HZ-2.9))/0.26,(tY+0.62)/0.4);
+float tDig=(tSeg(tDp,floor(vRoute/10.0))+tSeg(tDp-vec2(1.4,0.0),mod(vRoute,10.0)))*tSide*tEnd*tNear;
+float tSkirt=clamp(step(tY,-2.03)+step(tY,-1.96)*step(vLN.y,-0.6),0.0,1.0);
+float tGlowS=smoothstep(-4.5,-4.47,tY)*(1.0-smoothstep(-4.36,-4.33,tY))*step(1.9,abs(tX));
+float tRoof=step(2.36,tY)*step(0.5,vLN.y);
+float tWs=0.0, tLamp=0.0;
+#ifdef NOSE
+  tWs=smoothstep(0.1,0.16,tT)*(1.0-smoothstep(0.68,0.72,tT))*smoothstep(-0.45,-0.38,tY);
+  tLamp=smoothstep(0.74,0.79,tT)*smoothstep(-1.45,-1.42,tY)*(1.0-smoothstep(-1.2,-1.17,tY));
+  tLiv*=1.0-smoothstep(0.86,0.9,tT); tSkirt*=1.0-tLamp;
+#endif
+float tGlass=clamp(tWin+tWs,0.0,1.0);
+diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.09,0.1,0.12),clamp(tMull*tBand+tDoorLine+tSeam+tPin,0.0,1.0));
+diffuseColor.rgb=mix(diffuseColor.rgb,vLiv*0.75,tLiv);
+diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.06,0.065,0.075),tSkirt);
+diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.42,0.45,0.5),tRoof);
+diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.12),tDig);
+diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.012,0.018,0.03),tGlass);
+diffuseColor.rgb=mix(diffuseColor.rgb,vec3(1.0),tLamp);`;
+const TRAIN_EMIT=`
+vec3 tIn=mix(vec3(1.0,0.7,0.4),vec3(0.5,0.78,1.0),step(0.5,tH(vSeed*13.7)));
+float tSeatB=(1.0-smoothstep(0.12,0.16,tY))*0.6, tRail=step(0.96,tY)*step(tY,1.0)*tNear*0.7, tCeilL=smoothstep(1.06,1.1,tY);
+totalEmissiveRadiance+=tIn*tWin*(1.0-0.9*tSil)*(1.0-tSeatB)*(1.0-tRail)*(0.55+0.35*smoothstep(0.2,1.0,tY)+1.2*tCeilL)*(0.04+0.8*uNight);
+totalEmissiveRadiance+=vLiv*tLiv*(0.15+1.6*uNight);
+totalEmissiveRadiance+=vec3(0.3,0.95,1.0)*tGlowS*(0.4+2.4*uNight);
+totalEmissiveRadiance+=vLiv*tDig*(0.4+1.6*uNight);
+totalEmissiveRadiance+=vec3(0.35,1.0,0.55)*tDoorLamp*(0.3+1.6*uNight);
+#ifdef NOSE
+totalEmissiveRadiance+=mix(vec3(1.0,0.05,0.03)*1.8,vec3(1.0,0.96,0.88)*2.8,vHead)*tLamp*(0.8+1.4*uNight);
+totalEmissiveRadiance+=vec3(0.15,0.55,0.75)*tWs*0.2*uNight*smoothstep(-0.2,0.6,tY);
+#endif`;
+function trainMat(nose){
+  const m=new THREE.MeshStandardMaterial({color:C(0xeef2f7),roughness:0.28,metalness:0.35,envMapIntensity:1.3});
+  m.defines={HZ:HZ.toFixed(3),NOSE_L:NOSE_L.toFixed(2)}; if(nose) m.defines.NOSE='';
+  m.onBeforeCompile=sh=>{
+    sh.uniforms.uNight=uNight;
+    sh.vertexShader=sh.vertexShader.replace('#include <common>',`#include <common>
+attribute float aSeed; attribute vec3 aLiv; attribute float aRoute; attribute float aHead;
+varying vec3 vLoc; varying vec3 vLN; varying float vSeed; varying vec3 vLiv; varying float vRoute; varying float vHead; varying float vVD;`)
+      .replace('#include <begin_vertex>','#include <begin_vertex>\nvLoc=transformed; vLN=objectNormal; vSeed=aSeed; vLiv=aLiv; vRoute=aRoute; vHead=aHead;')
+      .replace('#include <project_vertex>','#include <project_vertex>\nvVD=-mvPosition.z;');
+    sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\n'+TRAIN_FRAG)
+      .replace('#include <color_fragment>','#include <color_fragment>\n'+TRAIN_MASKS)
+      .replace('#include <metalnessmap_fragment>','#include <metalnessmap_fragment>\nroughnessFactor=mix(mix(roughnessFactor,0.65,tSkirt),0.06,tGlass); metalnessFactor=mix(metalnessFactor,0.92,tGlass);')
+      .replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\n'+TRAIN_EMIT);
+  };
+  return m;
+}
+const TLIV=[C(0xff2bd6),C(0xffb02e)], TROUTE=[21,40];
+function trainInst(geo,mat,n,attr,cast){
+  const a={aSeed:new Float32Array(n),aLiv:new Float32Array(n*3),aRoute:new Float32Array(n),aHead:new Float32Array(n)};
+  for(let i=0;i<n;i++){ const r=attr(i); { const h=Math.sin(i*12.9898+4.1)*43758.5453; a.aSeed[i]=h-Math.floor(h); } a.aRoute[i]=TROUTE[r.t]; a.aHead[i]=r.head||0; TLIV[r.t].toArray(a.aLiv,i*3); }
+  for(const k in a) geo.setAttribute(k,new THREE.InstancedBufferAttribute(a[k],k==='aLiv'?3:1));
+  const m=new THREE.InstancedMesh(geo,mat,n); m.frustumCulled=false; m.castShadow=cast; scene.add(m); return m;
+}
+const NMID=TRAIN-2;
+const trainMesh=trainInst(carGeo(false),trainMat(false),2*NMID,i=>({t:i<NMID?0:1}),true);
+const noseMesh=trainInst(carGeo(true),trainMat(true),4,i=>({t:i>>1,head:i%2?0:1}),true);
+const gangMesh=new THREE.InstancedMesh(gangGeo(),new THREE.MeshStandardMaterial({color:C(0x1c2029),roughness:0.8,metalness:0.2}),2*(TRAIN-1));
+gangMesh.frustumCulled=false; scene.add(gangMesh);
 const trainLightArr=new Float32Array(TRAIN*2*3);
 const trainPts=makePoints(Array.from(trainLightArr),0xaef6ff,5,2.4);
-const _p=new THREE.Vector3(), _q=new THREE.Vector3();
+const _p=new THREE.Vector3(), _q=new THREE.Vector3(), _pp=new THREE.Vector3();
 let trainU=[0,0.5];
 function updateTrains(dt){
-  const ta=trainPts.geometry.attributes.position.array; let k=0;
+  const ta=trainPts.geometry.attributes.position.array; let k=0, kb=0, kn=0, kg=0;
   for(let t=0;t<2;t++){
     trainU[t]=(trainU[t]+dt*0.006*(t?-1:1)+1)%1;
     for(let i=0;i<TRAIN;i++){
       const u=(trainU[t]-i*0.0028*(t?-1:1)+1)%1;
       loop.getPointAt(u,_p); loop.getPointAt((u+0.001)%1,_q);
-      dummy.position.copy(_p); dummy.position.y+=4.4; dummy.scale.set(1,1,1); dummy.lookAt(_q.x,_q.y+4.4,_q.z); dummy.updateMatrix();
-      trainMesh.setMatrixAt(k,dummy.matrix);
+      dummy.position.copy(_p); dummy.position.y+=4.4; dummy.scale.set(1,1,1); dummy.lookAt(_q.x,_q.y+4.4,_q.z);
+      const nose=i===0||i===TRAIN-1;
+      if(nose&&((t===0)===(i===TRAIN-1))) dummy.rotateY(Math.PI); // nose tips point away from the train
+      dummy.updateMatrix();
+      if(nose) noseMesh.setMatrixAt(kn++,dummy.matrix); else trainMesh.setMatrixAt(kb++,dummy.matrix);
+      if(i>0){ dummy.position.set((_p.x+_pp.x)/2,(_p.y+_pp.y)/2+4.4,(_p.z+_pp.z)/2); dummy.lookAt(_p.x,_p.y+4.4,_p.z); dummy.updateMatrix(); gangMesh.setMatrixAt(kg++,dummy.matrix); }
+      _pp.copy(_p);
       ta[k*3]=_p.x; ta[k*3+1]=_p.y+4.4; ta[k*3+2]=_p.z; k++;
     }
   }
-  trainMesh.instanceMatrix.needsUpdate=true; trainPts.geometry.attributes.position.needsUpdate=true;
+  trainMesh.instanceMatrix.needsUpdate=true; noseMesh.instanceMatrix.needsUpdate=true; gangMesh.instanceMatrix.needsUpdate=true;
+  trainPts.geometry.attributes.position.needsUpdate=true;
 }
 
 /* ---------- traffic: ground pods + flying cars ---------- */
