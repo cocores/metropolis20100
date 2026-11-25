@@ -212,7 +212,7 @@ M-002 ✅, M-003 ✅, M-001 carried into Sprint 2.
 
 ## Sprint 2
 
-Status 2026-11-25: M-007 and M-021 merged and verified. Sprint 2 render work is done; Sprint 3 waits for the owner's go-ahead. Earlier the same day: resumed M-007 and M-021 from `wip/`. Earlier: 2026-11-24 18:11 EST resumed after the owner's pause. M-006 and M-010 continue from the patches in `wip/`. M-020 Detailed monorail (render-dev, owner request) runs alongside. Line numbers below predate the M-014 car merge (+~100 lines after line 1383); find regions by their section comments.
+Status 2026-11-25 (later): paused by the owner until credits renew. M-024, M-025 and M-027 saved to `wip/`. Merged today: M-004, M-016, M-017, M-023. Earlier: M-007 and M-021 merged and verified. Sprint 2 render work is done; Sprint 3 waits for the owner's go-ahead. Earlier the same day: resumed M-007 and M-021 from `wip/`. Earlier: 2026-11-24 18:11 EST resumed after the owner's pause. M-006 and M-010 continue from the patches in `wip/`. M-020 Detailed monorail (render-dev, owner request) runs alongside. Line numbers below predate the M-014 car merge (+~100 lines after line 1383); find regions by their section comments.
 : make "dropping in" work
 
 Carry-overs occupy regions that nobody else may touch: **M-001** (`tools/shot.js` plus the loop end 2160-2181) and **M-014** (car section 1383-1430).
