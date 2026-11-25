@@ -175,7 +175,7 @@ Why: the loader promises 1910→2140. The city should show old bones under new l
 
 ### Blocked / pending owner decision
 
-**M-019 Populate Central Park** (render-dev #2) 🔶 in-progress (owner request, 2026-11-24)
+**M-019 Populate Central Park** (render-dev #2) ✅ done (owner request, 2026-11-24). Follow-up: street-lamp rows still cross the park; the fix is assigned to M-007.
 Why: the park is the city's green heart and the one place where the two eras meet at human scale. Today it's a flat slab with ponds and trees.
 - Path network, recognisable Central Park places reimagined for 2140, and people, robots, dogs and boats that move through the park.
 - Its own seeded RNG, so the rest of the city doesn't reshuffle. Night lighting that reads from the orbit view. Phone tier capped.
