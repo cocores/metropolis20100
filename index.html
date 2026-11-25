@@ -691,9 +691,85 @@ instanced(coneBase,metalMat,SPIRES,(d,b)=>{d.position.set(b.x,b.y,b.z);d.scale.s
 }
 
 /* ---------- park ---------- */
+// M-019 Central Park 2140. Every new park item draws from its own seeded PRNG (prand), never the shared rand(),
+// so the buildings, cars and lights generated after this section are unchanged. Layout is hand-placed; z grows north.
+let _ps=20140719;
+function prand(){ _ps|=0; _ps=_ps+0x6D2B79F5|0; let t=Math.imul(_ps^_ps>>>15,1|_ps); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }
+const prr=(a,b)=>a+(b-a)*prand(), ppick=a=>a[Math.floor(prand()*a.length)];
+const uPG={value:1}; // park glow: emissive strength of park parts, follows the mood's lamp level (set in updatePark)
+const parkGrassMat=new THREE.MeshStandardMaterial({color:C(0x355a33),roughness:1,emissive:C(0x0c3a1c),emissiveIntensity:0});
+const PG=0.6, RESV={x:0,z:997,rx:94,rz:30}, BOW={x0:-100,x1:-40,z:610,h:4.2};
+const PKF={rink:{x:-15,z:450,rx:22,rz:13},carousel:{x:-55,z:545,r:9},meadow:{x:55,z:612,rx:38,rz:46},terr:{x0:-32,x1:32,z0:697,z1:727},
+  fountain:{x:0,z:716,r:7},boathouse:{x:100,z:770,w:20,d:10},garden:{x:-42,z:880,y:27},fields:[{x:-80,z:462},{x:-80,z:514}]};
+const onBow=(x,z)=>x>BOW.x0+0.5&&x<BOW.x1-0.5&&Math.abs(z-BOW.z)<3;
+const bowY=x=>PG+0.5+BOW.h*Math.sin(Math.PI*(x-BOW.x0)/(BOW.x1-BOW.x0));
+const PPATHS=[];
+function ppath(kind,w,pts,closed,dense){
+  let P=pts;
+  if(!dense){ const cv=new THREE.CatmullRomCurve3(pts.map(p=>new THREE.Vector3(p[0],0,p[1])),!!closed,'centripetal');
+    P=cv.getSpacedPoints(Math.ceil(cv.getLength()/2.5)).map(v=>[v.x,v.z]); if(closed) P.pop(); }
+  const x=[],z=[],y=[],L=[0];
+  P.forEach((p,i)=>{ x.push(p[0]); z.push(p[1]); y.push(onBow(p[0],p[1])?bowY(p[0]):PG); if(i) L.push(L[i-1]+Math.hypot(p[0]-P[i-1][0],p[1]-P[i-1][1])); });
+  if(closed){ L.push(L[L.length-1]+Math.hypot(P[0][0]-x[x.length-1],P[0][1]-z[z.length-1])); x.push(x[0]); z.push(z[0]); y.push(y[0]); }
+  const o={kind,w,x,z,y,L,len:L[L.length-1],closed:!!closed,ground:kind!=='rink'}; PPATHS.push(o); return o;
+}
+const ellPts=(cx,cz,rx,rz,n,pw)=>{ const a=[]; for(let i=0;i<n;i++){ const t=i/n*Math.PI*2, c=Math.cos(t), s=Math.sin(t);
+  if(pw){ const r=Math.pow(Math.pow(Math.abs(c)/rx,pw)+Math.pow(Math.abs(s)/rz,pw),-1/pw); a.push([cx+c*r,cz+s*r]); } else a.push([cx+c*rx,cz+s*rz]); } return a; };
+// loop drive (rounded super-ellipse), the Mall, footpaths, lake loop, reservoir running track, rink skating loop
+const PDRIVE=ppath('drive',6,ellPts(0,722,120,316,1600,5),true);
+ppath('mall',9,[[0,548],[0,697]]);
+ppath('foot',3.2,[[-140,396],[-112,414],[-70,428],[-50,462],[-40,500],[-22,530],[0,548]]);
+ppath('foot',3.2,[[140,396],[112,414],[80,436],[46,443],[24,448]]);
+ppath('foot',3.2,[[0,386],[14,415],[22,445],[20,480],[8,520],[0,548]]);
+ppath('foot',3.2,[[-117,566],[-110,590],[-103,606],[-100,610],[-85,610],[-70,610],[-55,610],[-40,610],[-35,618],[-28,642],[-17,672],[-8,697]]);
+ppath('foot',3.2,[[117,560],[104,590],[100,630],[92,668],[60,690],[30,700]]);
+ppath('foot',3.2,[[-30,712],[-70,708],[-117,700]]);
+ppath('foot',3.2,[[-118,904],[-108,890],[-96,878]]);
+ppath('foot',3.2,[[118,904],[108,890],[96,878]]);
+ppath('foot',3.2,[[0,950],[0,964]]);
+const PLAKE=ppath('lake',3.6,ellPts(0,840,102,112,220),true,true);
+const PTRACK=ppath('track',3.4,ellPts(RESV.x,RESV.z,RESV.rx+4,RESV.rz+4,160),true,true);
+const PRINK=ppath('rink',0,ellPts(PKF.rink.x,PKF.rink.z,PKF.rink.rx-5,PKF.rink.rz-4.5,60),true,true);
+const GPATHS=PPATHS.filter(p=>p.ground);
+function pathDist(x,z){ let best=1e9;
+  for(const p of GPATHS){ const hw=p.w/2;
+    for(let i=0;i<p.x.length-1;i++){ const ax=p.x[i],az=p.z[i],dx=p.x[i+1]-ax,dz=p.z[i+1]-az; if(Math.abs(x-ax)>40||Math.abs(z-az)>40) continue;
+      const l2=dx*dx+dz*dz||1, f=Math.max(0,Math.min(1,((x-ax)*dx+(z-az)*dz)/l2)), d=Math.hypot(x-ax-dx*f,z-az-dz*f)-hw; if(d<best) best=d; } }
+  return best; }
+const inEll=(x,z,e,m)=>((x-e.x)/(e.rx+m))**2+((z-e.z)/(e.rz+m))**2<1;
+function parkFree(x,z,m){ // true when (x,z) is clear of every hand-placed feature by margin m
+  const F=PKF;
+  if(inEll(x,z,RESV,6+m)||inEll(x,z,F.rink,3+m)||inEll(x,z,F.meadow,m)) return false;
+  if(Math.hypot(x-F.carousel.x,z-F.carousel.z)<F.carousel.r+2+m) return false;
+  if(x>F.terr.x0-3-m&&x<F.terr.x1+3+m&&z>F.terr.z0-3-m&&z<F.terr.z1+m) return false;
+  if(Math.abs(x-F.boathouse.x)<F.boathouse.w/2+3+m&&Math.abs(z-F.boathouse.z)<F.boathouse.d/2+3+m) return false;
+  if(x>60-m&&x<92&&Math.abs(z-F.boathouse.z)<3+m) return false;
+  if(F.fields.some(f=>Math.abs(x-f.x)<17+m&&Math.abs(z-f.z)<17+m)) return false;
+  if(x>BOW.x0-4-m&&x<BOW.x1+4+m&&Math.abs(z-BOW.z)<5+m) return false;
+  return true; }
+// rocks (Umpire-Rock style outcrops) and bioluminescent trees are placed first so ordinary trees can be cleared around them
+const PROCKS=[], PBIO=[];
+for(let i=0;i<160&&PROCKS.length<(isMobile?14:22);i++){
+  const x=prr(PARK.x0+8,PARK.x1-8), z=prr(PARK.z0+8,PARK.z1-8);
+  if(inLake(x,z,6)||!parkFree(x,z,4)||pathDist(x,z)<5||PROCKS.some(r=>Math.hypot(r.x-x,r.z-z)<18)) continue;
+  const n=2+Math.floor(prand()*3); for(let k=0;k<n;k++) PROCKS.push({x:x+prr(-4,4),z:z+prr(-4,4),s:prr(1.6,4.2),f:prr(0.35,0.6),r:prr(0,6.28),c:prr(0.85,1.1)});
+}
 {
-  const p=new THREE.Mesh(new THREE.BoxGeometry(PARK.x1-PARK.x0,0.6,PARK.z1-PARK.z0),grassMat);
-  p.position.set(0,0.3,(PARK.z0+PARK.z1)/2); p.receiveShadow=true; scene.add(p);
+  const BIOC=[0x3dffb0,0x22e6ff,0x3dffb0,0x8a5cff,0x22e6ff,0xff4dc4];
+  const cand=GPATHS.filter(p=>p.kind!=='drive'&&p.kind!=='track');
+  for(let i=0;i<400&&PBIO.length<(isMobile?14:30);i++){
+    const p=ppick(cand), k=Math.floor(prand()*(p.x.length-1)), side=prand()<0.5?-1:1, off=p.w/2+prr(3.5,6);
+    const dx=p.x[k+1]-p.x[k], dz=p.z[k+1]-p.z[k], dl=Math.hypot(dx,dz)||1, x=p.x[k]+dz/dl*off*side, z=p.z[k]-dx/dl*off*side;
+    if(Math.abs(x)>PARK.x1-5||z<PARK.z0+5||z>PARK.z1-5||inLake(x,z,3)||!parkFree(x,z,1)||pathDist(x,z)<2.5||PBIO.some(b=>Math.hypot(b.x-x,b.z-z)<12)) continue;
+    PBIO.push({x,z,y:PG,s:prr(3,5),c:C(ppick(BIOC))});
+  }
+}
+{
+  // grass slab with holes under every water body, so the water discs no longer z-fight with the grass top from afar
+  const sh=new THREE.Shape(); sh.moveTo(PARK.x0,-PARK.z0); sh.lineTo(PARK.x1,-PARK.z0); sh.lineTo(PARK.x1,-PARK.z1); sh.lineTo(PARK.x0,-PARK.z1); sh.lineTo(PARK.x0,-PARK.z0);
+  [...LAKES,RESV].forEach(l=>{ const h=new THREE.Path(); h.absellipse(l.x,-l.z,l.rx+0.3,l.rz+0.3,0,Math.PI*2,true); sh.holes.push(h); });
+  const pg=new THREE.ExtrudeGeometry(sh,{depth:0.6,bevelEnabled:false,curveSegments:48}); pg.rotateX(-Math.PI/2);
+  const p=new THREE.Mesh(pg,parkGrassMat); p.receiveShadow=true; scene.add(p);
   LAKES.forEach(l=>{ const g=new THREE.CircleGeometry(1,64); g.rotateX(-Math.PI/2); const m=new THREE.Mesh(g,waterMat); m.scale.set(l.rx,1,l.rz); m.position.set(l.x,0.68,l.z); scene.add(m); });
   for(let i=0;i<(isMobile?900:2600);i++){
     const x=rr(PARK.x0+3,PARK.x1-3), z=rr(PARK.z0+3,PARK.z1-3);
@@ -701,8 +777,285 @@ instanced(coneBase,metalMat,SPIRES,(d,b)=>{d.position.set(b.x,b.y,b.z);d.scale.s
     if(z>720&&z<960&&Math.abs(x)<130&&rand()<0.7) continue;
     TREES.push({x,z,y:0.6,s:rr(3.2,6.8),c:C(pick(GREENS))});
   }
-  instanced(new THREE.IcosahedronGeometry(1,1),new THREE.MeshStandardMaterial({color:0xffffff,roughness:1}),TREES,
+  // M-019: clear the (already generated) park trees off paths, lawns and features — a filter only, no rand() calls
+  const keep=TREES.filter(t=>{ if(t.y!==0.6||t.x<PARK.x0||t.x>PARK.x1||t.z<PARK.z0||t.z>PARK.z1) return true;
+    if(!parkFree(t.x,t.z,t.s*0.4)||pathDist(t.x,t.z)<1+t.s*0.55) return false;
+    return !PROCKS.some(r=>Math.hypot(r.x-t.x,r.z-t.z)<r.s+t.s*0.5)&&!PBIO.some(b=>Math.hypot(b.x-t.x,b.z-t.z)<b.s+t.s*0.6); });
+  TREES.length=0; keep.forEach(t=>TREES.push(t));
+  for(let z=556;z<=690;z+=9) [-11,11].forEach(x=>TREES.push({x:x+prr(-0.6,0.6),z:z+prr(-1,1),y:0.6,s:prr(4.4,5.4),c:C(ppick(GREENS))})); // the Mall's elm rows
+  const treeMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1});
+  treeMat.onBeforeCompile=sh=>{ // park canopies (not roof gardens) pick up a faint bioluminescent green at night
+    sh.uniforms.uPG=uPG;
+    sh.vertexShader='varying float vInPark;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n#ifdef USE_INSTANCING\n{ vec3 ip=instanceMatrix[3].xyz; vInPark=step(abs(ip.x),143.0)*step(384.0,ip.z)*step(ip.z,1056.0)*step(ip.y,20.0); }\n#else\nvInPark=0.0;\n#endif');
+    sh.fragmentShader='uniform float uPG; varying float vInPark;\n'+sh.fragmentShader.replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\ntotalEmissiveRadiance+=vec3(0.02,0.075,0.04)*uPG*vInPark;'); };
+  instanced(new THREE.IcosahedronGeometry(1,1),treeMat,TREES,
     (d,b)=>{d.position.set(b.x,b.y+b.s*0.9,b.z);d.scale.set(b.s,b.s*0.9,b.s);d.rotation.set(0,b.s,0);},true,true);
+}
+
+/* ---------- park life (M-019): paths, places, lamps, people, robots, dogs, boats, drones ---------- */
+function parkGlowHook(sh){ sh.uniforms.uPG=uPG;
+  sh.vertexShader='attribute float aGlow;\nvarying float vGlow;\n'+sh.vertexShader.replace('#include <color_vertex>','#include <color_vertex>\nvGlow=aGlow;');
+  sh.fragmentShader='uniform float uPG;\nvarying float vGlow;\n'+sh.fragmentShader.replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\ntotalEmissiveRadiance+=vColor.rgb*vGlow*uPG;'); }
+function parkStd(o){ const m=new THREE.MeshStandardMaterial(Object.assign({color:0xffffff,roughness:0.9,vertexColors:true},o)); m.onBeforeCompile=parkGlowHook; return m; }
+const pBuf=()=>({p:[],n:[],c:[],g:[]});
+function pTri(D,a,b,c,col,gl){ const cy=(b[2]-a[2])*(c[0]-a[0])-(b[0]-a[0])*(c[2]-a[2]); if(cy<0){ const t=b; b=c; c=t; }
+  for(const v of [a,b,c]){ D.p.push(v[0],v[1],v[2]); D.n.push(0,1,0); D.c.push(col.r,col.g,col.b); D.g.push(gl); } }
+function pRibbon(D,P,yv,o0,o1,col,gl,skip){ // strip between lateral offsets o0..o1 of a path (perp points outward for CCW loops)
+  const n=P.x.length, pp=i=>{ const a=Math.max(i-1,0), b=Math.min(i+1,n-1); let tx=P.x[b]-P.x[a], tz=P.z[b]-P.z[a];
+    if(P.closed&&(i===0||i===n-1)){ tx=P.x[1]-P.x[n-2]; tz=P.z[1]-P.z[n-2]; } const l=Math.hypot(tx,tz)||1; return [tz/l,-tx/l]; };
+  for(let i=0;i<n-1;i++){ if(skip&&skip(i)) continue; const a=pp(i), b=pp(i+1);
+    const A=[P.x[i]+a[0]*o0,yv,P.z[i]+a[1]*o0], B=[P.x[i]+a[0]*o1,yv,P.z[i]+a[1]*o1], Cc=[P.x[i+1]+b[0]*o1,yv,P.z[i+1]+b[1]*o1], Dd=[P.x[i+1]+b[0]*o0,yv,P.z[i+1]+b[1]*o0];
+    pTri(D,A,B,Cc,col,gl); pTri(D,A,Cc,Dd,col,gl); } }
+function pFan(D,pts,yv,col,gl){ let cx=0,cz=0; pts.forEach(p=>{cx+=p[0];cz+=p[1];}); cx/=pts.length; cz/=pts.length;
+  for(let i=0;i<pts.length;i++){ const a=pts[i], b=pts[(i+1)%pts.length]; pTri(D,[cx,yv,cz],[a[0],yv,a[1]],[b[0],yv,b[1]],col,gl); } }
+const asLoop=pts=>({x:pts.map(p=>p[0]).concat([pts[0][0]]),z:pts.map(p=>p[1]).concat([pts[0][1]]),closed:true});
+const _po=new THREE.Object3D();
+function pAdd(D,geo,x,y,z,sx,sy,sz,col,gl,ry,rx,rz){ _po.position.set(x,y,z); _po.rotation.set(rx||0,ry||0,rz||0); _po.scale.set(sx,sy,sz); _po.updateMatrix();
+  const g=geo.clone().applyMatrix4(_po.matrix), P=g.attributes.position.array, N=g.attributes.normal.array;
+  for(let i=0;i<P.length;i+=3){ D.p.push(P[i],P[i+1],P[i+2]); D.n.push(N[i],N[i+1],N[i+2]); D.c.push(col.r,col.g,col.b); D.g.push(gl); } g.dispose(); }
+function pGeo(D,extra){ const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(D.p,3)); g.setAttribute('normal',new THREE.Float32BufferAttribute(D.n,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(D.c,3)); g.setAttribute('aGlow',new THREE.Float32BufferAttribute(D.g,1)); if(extra) extra(g); return g; }
+const NI=g=>g.index?g.toNonIndexed():g;
+const gBox=NI(new THREE.BoxGeometry(1,1,1)), gCyl=NI(new THREE.CylinderGeometry(1,1,1,6,1,true)), gCyl16=NI(new THREE.CylinderGeometry(1,1,1,16)),
+  gCone=NI(new THREE.ConeGeometry(1,1,16)), gIco0=NI(new THREE.IcosahedronGeometry(1,0)), gIco1=NI(new THREE.IcosahedronGeometry(1,1));
+const PLP=[], PLC=[]; // park glow points (lamps, water edges; drone beacons are appended at the end and move)
+function pPt(x,y,z,col){ PLP.push(x,y,z); PLC.push(col.r,col.g,col.b); }
+const GD=pBuf(), SD=pBuf(), WD=pBuf();
+{
+  const K=(h,k)=>C(h).multiplyScalar(k||1);
+  const cPath=K(0xb3a58b), cMall=K(0xc9bda4), cDrive=K(0x5a5f69), cTrack=K(0x9a5a48), cEdge=K(0x3dffb0,0.9), cEdgeD=K(0x22e6ff,0.9), cRim=K(0x2ee8ff), cStone=K(0xcdbb98);
+  const cLampW=K(0xffd29a,2.4), cLampC=K(0xbfeaff,2.2), cRimP=K(0x2ee8ff,1.7), cPost=K(0x2a2e36);
+  // ground: lawns, plazas, rink ice, infields
+  pFan(GD,ellPts(PKF.meadow.x,PKF.meadow.z,PKF.meadow.rx,PKF.meadow.rz,48),PG+0.04,K(0x4f8040),0.05);
+  pFan(GD,[[PKF.terr.x0,705],[PKF.terr.x1,705],[PKF.terr.x1,PKF.terr.z1],[PKF.terr.x0,PKF.terr.z1]],PG+0.06,cStone,0.16);
+  pFan(GD,ellPts(PKF.rink.x,PKF.rink.z,PKF.rink.rx,PKF.rink.rz,48,4),PG+0.06,K(0xd8f3fb),0.55);
+  pRibbon(GD,asLoop(ellPts(PKF.rink.x,PKF.rink.z,PKF.rink.rx,PKF.rink.rz,48,4)),PG+0.08,0.1,0.6,K(0xff7ae0),1.6);
+  PKF.fields.forEach(f=>{ const u=[-Math.SQRT1_2,Math.SQRT1_2], v=[Math.SQRT1_2,Math.SQRT1_2], hx=f.x+7.5, hz=f.z-7.5, S=16;
+    const q=(a,b)=>[hx+u[0]*a+v[0]*b,hz+u[1]*a+v[1]*b]; f.home=[hx,hz]; f.u=u; f.v=v;
+    pFan(GD,[q(-2.5,0),q(9.5,11),q(21,0),q(9.5,-11)],PG+0.05,K(0x9a6a45),0.08);
+    [[8,8],[16,0],[8,-8],[0,0]].forEach(([a,b])=>{ const w=q(a,b); pAdd(SD,gBox,w[0],PG+0.1,w[1],0.5,0.1,0.5,K(0xf4f4f0),0.4); });
+  });
+  // paths and their glowing edges (glow scales with night)
+  GPATHS.forEach(p=>{
+    const col=p.kind==='drive'?cDrive:p.kind==='mall'?cMall:p.kind==='track'?cTrack:cPath, ec=p.kind==='drive'?cEdgeD:cEdge, hw=p.w/2;
+    const skip=i=>onBow(p.x[i],p.z[i])&&onBow(p.x[i+1],p.z[i+1]);
+    pRibbon(GD,p,PG+0.1,-hw,hw,col,0.12,skip);
+    if(p.kind!=='mall'){ pRibbon(GD,p,PG+0.12,hw+0.15,hw+0.5,ec,1.4,skip); pRibbon(GD,p,PG+0.12,-hw-0.5,-hw-0.15,ec,1.4,skip); }
+    // lamps: posts in the static mesh, heads as glow points
+    const sp=(p.kind==='drive'?26:p.kind==='mall'?14:p.kind==='track'?22:18)*(isMobile?1.5:1);
+    for(let s=sp*0.5,k=0;s<p.len-2;s+=sp,k++){
+      let i=0; while(p.L[i+1]<s) i++; const f=(s-p.L[i])/(p.L[i+1]-p.L[i]), x=p.x[i]+(p.x[i+1]-p.x[i])*f, z=p.z[i]+(p.z[i+1]-p.z[i])*f;
+      const dx=p.x[i+1]-p.x[i], dz=p.z[i+1]-p.z[i], dl=Math.hypot(dx,dz)||1;
+      (p.kind==='mall'?[-1,1]:[k%2?1:-1]).forEach(sd=>{ const o=hw+1.1, lx=x+dz/dl*o*sd, lz=z-dx/dl*o*sd;
+        if(onBow(x,z)||inLake(lx,lz,1)||inEll(lx,lz,RESV,1)) return;
+        pAdd(SD,gCyl,lx,PG+2.1,lz,0.09,4.2,0.09,cPost,0); pAdd(SD,gBox,lx,PG+4.3,lz,0.3,0.14,0.3,K(0xffe2b8),0.7);
+        pPt(lx,PG+4.6,lz,p.kind==='drive'?cLampC:cLampW); });
+    }
+  });
+  // water: reservoir + fountain pool, glowing rims, rim lights
+  pFan(WD,ellPts(RESV.x,RESV.z,RESV.rx,RESV.rz,64),0.68,K(0xffffff),0);
+  pFan(WD,ellPts(PKF.fountain.x,PKF.fountain.z,PKF.fountain.r-0.4,PKF.fountain.r-0.4,32),PG+0.82,K(0xffffff),0);
+  [...LAKES,RESV].forEach(l=>{ const E=asLoop(ellPts(l.x,l.z,l.rx,l.rz,Math.round((l.rx+l.rz)*1.2)));
+    pRibbon(GD,E,PG+0.1,0.1,1.1,cRim,1.8);
+    const per=Math.PI*(l.rx+l.rz), n=Math.floor(per/(isMobile?16:10)); for(let i=0;i<n;i++){ const a=i/n*Math.PI*2; pPt(l.x+Math.cos(a)*(l.rx+0.8),PG+0.5,l.z+Math.sin(a)*(l.rz+0.8),cRimP); } });
+  // Bethesda-style terrace: arcade block with warm-lit arches, grand stair, fountain with angel and light jets
+  pAdd(SD,gBox,0,PG+1.3,700.5,64,2.6,8,cStone,0.05);
+  for(let k=-2;k<=2;k++) if(k) pAdd(SD,gBox,k*11,PG+1.1,704.6,6,2,0.3,K(0xffb46e),1.1);
+  [2.0,1.35,0.7].forEach((h,k)=>pAdd(SD,gBox,0,PG+h/2,705.2+k*1.3,14,h,1.3,cStone,0.05));
+  pAdd(SD,gBox,-19,PG+3,704.4,26,0.7,0.35,cStone,0.1); pAdd(SD,gBox,19,PG+3,704.4,26,0.7,0.35,cStone,0.1);
+  const F=PKF.fountain, bronze=K(0x4f8a76);
+  pAdd(SD,gCyl16,F.x,PG+0.35,F.z,F.r,0.7,F.r,cStone,0.08);
+  pAdd(SD,gCyl16,F.x,PG+1.5,F.z,1.4,1.8,1.4,cStone,0); pAdd(SD,gCyl16,F.x,PG+2.55,F.z,2.6,0.35,2.6,cStone,0);
+  pAdd(SD,gCyl16,F.x,PG+3.4,F.z,0.55,1.6,0.55,cStone,0); pAdd(SD,gCyl16,F.x,PG+4.25,F.z,1.3,0.25,1.3,cStone,0);
+  pAdd(SD,gCone,F.x,PG+5.1,F.z,0.38,1.5,0.38,bronze,0); pAdd(SD,gBox,F.x-0.45,PG+5.5,F.z,0.9,0.5,0.06,bronze,0,0,0,0.5); pAdd(SD,gBox,F.x+0.45,PG+5.5,F.z,0.9,0.5,0.06,bronze,0,0,0,-0.5);
+  for(let k=0;k<10;k++){ const a=k/10*Math.PI*2; pAdd(SD,gCone,F.x+Math.cos(a)*4.6,PG+1.7,F.z+Math.sin(a)*4.6,0.14,2.2,0.14,K(0xc8f6ff),2.4); pPt(F.x+Math.cos(a)*F.r,PG+1.0,F.z+Math.sin(a)*F.r,cRimP); }
+  pAdd(SD,gCone,F.x,PG+3.4,F.z,0.7,2.6,0.7,K(0xc8f6ff),1.2);
+  [[-30,725],[30,725],[-30,707],[30,707]].forEach(([x,z])=>{ pAdd(SD,gCyl,x,PG+2.1,z,0.09,4.2,0.09,cPost,0); pAdd(SD,gBox,x,PG+4.3,z,0.3,0.14,0.3,K(0xffe2b8),0.7); pPt(x,PG+4.6,z,cLampW); });
+  // Bow-style bridge: cream cast-iron arch with an LED keel
+  for(let k=0;k<20;k++){ const x0=BOW.x0+k*3, x1=x0+3, y0=bowY(x0), y1=bowY(x1), xm=(x0+x1)/2, ym=(y0+y1)/2, ang=Math.atan2(y1-y0,3);
+    pAdd(SD,gBox,xm,ym-0.25,BOW.z,3.08,0.5,4,K(0xe6dcc6),0.05,0,0,ang);
+    [-1,1].forEach(s=>pAdd(SD,gBox,xm,ym+0.6,BOW.z+s*2,3.08,0.12,0.12,K(0xe6dcc6),0.1,0,0,ang));
+    pAdd(SD,gBox,xm,ym-0.55,BOW.z,3.08,0.1,1.2,K(0x7af0ff),2.0,0,0,ang);
+    if(k%2===0) [-1,1].forEach(s=>pAdd(SD,gBox,x0,y0+0.3,BOW.z+s*2,0.1,0.6,0.1,K(0xe6dcc6),0)); }
+  // boathouse with lit windows, green roof and a dock
+  const H=PKF.boathouse;
+  pAdd(SD,gBox,H.x,PG+2.25,H.z,H.w,4.5,H.d,K(0xe4dccb),0.02); pAdd(SD,gBox,H.x,PG+4.8,H.z,H.w+2,0.6,H.d+2,K(0x2f6b5a),0);
+  pAdd(SD,gBox,H.x-H.w/2-0.05,PG+2.6,H.z,0.12,1.6,H.d*0.8,K(0xffc27a),1.6); pAdd(SD,gBox,H.x,PG+2.6,H.z-H.d/2-0.05,H.w*0.8,1.6,0.12,K(0xffc27a),1.6);
+  pAdd(SD,gBox,(60+H.x-H.w/2)/2,0.85,H.z,H.x-H.w/2-60,0.3,4,K(0x8a6a4a),0.02);
+  for(let x=62;x<H.x-H.w/2;x+=5) [-1,1].forEach(s=>pAdd(SD,gCyl,x,0.9,H.z+s*2,0.12,1.4,0.12,K(0x5a4632),0));
+  pPt(61,PG+1.4,H.z-2,cLampW); pPt(61,PG+1.4,H.z+2,cLampW);
+  // rink wall, ball-field backstops and bases, Mall benches, picnic blankets, rocks
+  { const R=ellPts(PKF.rink.x,PKF.rink.z,PKF.rink.rx+0.4,PKF.rink.rz+0.4,44,4); R.forEach((a,i)=>{ const b=R[(i+1)%R.length], l=Math.hypot(b[0]-a[0],b[1]-a[1]);
+    pAdd(SD,gBox,(a[0]+b[0])/2,PG+0.45,(a[1]+b[1])/2,l,0.9,0.18,K(0xf2f4f8),0.3,-Math.atan2(b[1]-a[1],b[0]-a[0])); }); }
+  PKF.fields.forEach(f=>{ for(let k=0;k<5;k++){ const a=Math.atan2(-f.u[1],-f.u[0])+(k-2)*0.38, r=6;
+      pAdd(SD,gBox,f.home[0]+Math.cos(a)*r,PG+1.8,f.home[1]+Math.sin(a)*r,2.4,3.6,0.08,K(0x9aa2ab),0,-a+Math.PI/2); }
+  });
+  for(let z=560;z<=688;z+=12) [-1,1].forEach(s=>pAdd(SD,gBox,s*5.6,PG+0.45,z,0.6,0.12,2.2,K(0x6b4e36),0));
+  PKF.blankets=[];
+  for(let i=0;i<300&&PKF.blankets.length<(isMobile?10:20);i++){
+    const a=prand()*Math.PI*2, r=Math.sqrt(prand())*0.85, x=PKF.meadow.x+Math.cos(a)*PKF.meadow.rx*r, z=PKF.meadow.z+Math.sin(a)*PKF.meadow.rz*r;
+    if(PKF.blankets.some(b=>Math.hypot(b.x-x,b.z-z)<6)) continue;
+    const b={x,z,r:prand()*Math.PI}; PKF.blankets.push(b);
+    pAdd(SD,gBox,x,PG+0.08,z,2.2,0.05,1.8,K(ppick([0xc23b3b,0xe8e2d0,0x3b6fb0,0xe0b040,0x7a4fa0,0x2fa38f,0xff7ab0])),0.05,b.r); }
+  PROCKS.forEach(r=>pAdd(SD,gIco0,r.x,PG+r.s*r.f*0.4,r.z,r.s,r.s*r.f,r.s*0.85,K(0x75706a,r.c),0,r.r));
+}
+const parkGround=new THREE.Mesh(pGeo(GD),parkStd({roughness:1,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-4}));
+parkGround.receiveShadow=true; scene.add(parkGround);
+const parkStatic=new THREE.Mesh(pGeo(SD),parkStd({roughness:0.75})); parkStatic.castShadow=true; parkStatic.receiveShadow=true; scene.add(parkStatic);
+{ const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(WD.p,3)); g.setAttribute('normal',new THREE.Float32BufferAttribute(WD.n,3));
+  const m=new THREE.Mesh(g,waterMat); m.receiveShadow=true; scene.add(m); }
+// carousel (turns) and the floating garden pavilion over the lake (bobs)
+const carousel=(()=>{ const D=pBuf(), K=h=>C(h);
+  pAdd(D,gCyl16,0,0.3,0,9,0.6,9.3,K(0xe9e1d0),0.05); pAdd(D,gCyl16,0,2.8,0,1.3,4.4,1.3,K(0xd8b25a),0.6);
+  pAdd(D,gCone,0,6.6,0,10.2,3.2,10.2,K(0x2f7f7a),0); pAdd(D,gIco1,0,8.4,0,0.5,0.5,0.5,K(0xffd27a),2);
+  pAdd(D,NI(new THREE.CylinderGeometry(1,1,1,24,1,true)),0,4.85,0,10,0.7,10,K(0xffd28a),2.2);
+  for(let k=0;k<12;k++){ const a=k/12*Math.PI*2, x=Math.cos(a)*6.8, z=Math.sin(a)*6.8;
+    pAdd(D,gCyl,x,2.6,z,0.05,4.2,0.05,K(0xd8b25a),0.4); pAdd(D,gBox,x,1.5+(k%3)*0.35,z,0.35,0.7,1.2,K([0xf5f0ea,0xe8b0c8,0x9fd8e8,0xf0d080][k%4]),0.1,-a); }
+  const m=new THREE.Mesh(pGeo(D),parkStd({roughness:0.6})); m.position.set(PKF.carousel.x,PG,PKF.carousel.z); m.castShadow=true; m.receiveShadow=true; scene.add(m); return m; })();
+const pGarden=(()=>{ const D=pBuf(), K=h=>C(h);
+  pAdd(D,gCone,0,-4.5,0,14,9,14,K(0x5a4a3c),0,0,Math.PI); pAdd(D,gCyl16,0,0.4,0,14,0.8,14,K(0x4c7a3a),0.04);
+  pAdd(D,NI(new THREE.CylinderGeometry(1,1,1,28,1,true)),0,-0.05,0,14.25,0.35,14.25,K(0x6ff0ff),2.2);
+  for(let k=0;k<6;k++){ const a=k/6*Math.PI*2; pAdd(D,gCyl,Math.cos(a)*3.6,2.6,Math.sin(a)*3.6,0.08,3.6,0.08,K(0xeef2f6),0); }
+  pAdd(D,gCyl16,0,4.5,0,4.4,0.25,4.4,K(0xeef2f6),0.3); pAdd(D,gCyl16,0,4.35,0,4.0,0.05,4.0,K(0xffd29a),0.5);
+  for(let k=0;k<9;k++){ const a=prand()*Math.PI*2, r=prr(6.5,11.5), s=prr(1.8,3.2); pAdd(D,gIco1,Math.cos(a)*r,0.8+s*0.9,Math.sin(a)*r,s,s*0.9,s,K(ppick(GREENS)),0); }
+  for(let k=0;k<8;k++){ const a=k/8*Math.PI*2+0.2; pAdd(D,gCone,Math.cos(a)*9,-3.5,Math.sin(a)*9,0.25,5,0.25,K(0x3dffb0),0.8,0,Math.PI); }
+  const m=new THREE.Mesh(pGeo(D),parkStd({roughness:0.8})); m.position.set(PKF.garden.x,PKF.garden.y,PKF.garden.z); m.castShadow=true; scene.add(m); return m; })();
+// bioluminescent trees (instanced; glow strengthens at night)
+const pBioM=(()=>{ const g=gIco1.clone(), n=g.attributes.position.count;
+  g.setAttribute('color',new THREE.Float32BufferAttribute(new Float32Array(n*3).fill(1),3)); g.setAttribute('aGlow',new THREE.Float32BufferAttribute(new Float32Array(n).fill(1.15),1));
+  return instanced(g,parkStd({roughness:0.5}),PBIO,(d,b)=>{d.position.set(b.x,b.y+b.s*1.15,b.z);d.scale.set(b.s*0.8,b.s*1.25,b.s*0.8);},false,false); })();
+
+/* park life: agents. Persons share one body mesh + one limb mesh; robots, bikes, dogs, boats and drones are their own instanced meshes. */
+const MOB=isMobile?0.5:1, NQ=n=>Math.max(1,Math.round(n*MOB));
+const PA=[]; // agents moving along PPATHS
+let nPer=0, nRob=0, nBike=0, nDog=0;
+const PSIT=[]; // seated/standing people that don't travel
+{
+  const foot=GPATHS.filter(p=>p.kind==='foot'||p.kind==='mall'||p.kind==='lake'), fLen=foot.reduce((a,p)=>a+p.len,0);
+  const onPath=(p,mode,sp,o)=>{ const a=Object.assign({pa:p,s:prand()*p.len,dir:prand()<0.5?1:-1,sp,lat:prr(-p.w*0.38,p.w*0.38),mode,ph:prand()*6.28,sc:prr(0.9,1.08),k:0},o); PA.push(a); return a; };
+  const spread=(n,fn)=>{ let acc=0, k=0; foot.forEach(p=>{ acc+=p.len/fLen*n; while(k<Math.round(acc)){ fn(p); k++; } }); };
+  spread(NQ(150),p=>{ const a=onPath(p,0,prr(1.0,1.5),{pi:nPer++}); if(prand()<0.12) a.dog=nDog++; });
+  spread(NQ(10),p=>onPath(p,7,prr(0.9,1.3),{ri:nRob++}));
+  for(let i=0;i<NQ(22);i++) onPath(PTRACK,1,prr(2.6,3.6),{pi:nPer++});
+  for(let i=0;i<NQ(8);i++) onPath(PLAKE,1,prr(2.6,3.4),{pi:nPer++});
+  for(let i=0;i<NQ(6);i++) onPath(PDRIVE,1,prr(2.8,3.6),{pi:nPer++});
+  for(let i=0;i<NQ(16);i++) onPath(PDRIVE,2,prr(5,8),{pi:nPer++,bi:nBike++,lat:prr(0.6,2.4)*(i%2?1:-1)});
+  for(let i=0;i<NQ(6);i++) onPath(PDRIVE,7,prr(1.2,1.8),{ri:nRob++});
+  for(let i=0;i<NQ(14);i++) onPath(PRINK,5,prr(2.2,3.4),{pi:nPer++,dir:1,lat:prr(-3,3)});
+  // picnickers on the blankets, bench sitters on the Mall, ball players, people at the fountain and on the dock
+  PKF.blankets.forEach(b=>{ const n=1+Math.floor(prand()*3); for(let k=0;k<n;k++){ const a=b.r+k*2.1+prr(-0.3,0.3); PSIT.push({pi:nPer++,mode:3,x:b.x+Math.cos(a)*0.8,z:b.z+Math.sin(a)*0.8,y:PG+0.1,yaw:Math.atan2(-Math.cos(a),-Math.sin(a)),ph:prand()*6.28}); } });
+  for(let i=0;i<NQ(10);i++){ const s=i%2?1:-1, z=560+12*Math.floor(prand()*11)+prr(-0.6,0.6); PSIT.push({pi:nPer++,mode:3,x:s*5.8,z,y:PG+0.5,yaw:s>0?-Math.PI/2:Math.PI/2,ph:prand()*6.28}); }
+  PKF.fields.slice(0,isMobile?1:2).forEach(f=>{ const P=[[-1.5,0],[0,1],[8,0],[9,6.5],[14,4],[14,-4],[9,-6.5],[22,-10],[26,0],[22,10]];
+    P.forEach(([a,b],k)=>{ const x=f.home[0]+f.u[0]*a+f.v[0]*b, z=f.home[1]+f.u[1]*a+f.v[1]*b; PSIT.push({pi:nPer++,mode:4,x,z,y:PG,yaw:Math.atan2(-f.u[0],-f.u[1]),ph:prand()*6.28,team:k<2?0:1}); }); });
+  for(let i=0;i<NQ(12);i++){ const a=prand()*Math.PI*2, r=PKF.fountain.r+prr(1,3); PSIT.push({pi:nPer++,mode:4,x:PKF.fountain.x+Math.cos(a)*r,z:PKF.fountain.z+Math.sin(a)*r,y:PG,yaw:Math.atan2(-Math.cos(a),-Math.sin(a))+prr(-0.6,0.6),ph:prand()*6.28}); }
+  for(let i=0;i<NQ(6);i++){ const a=prand()*Math.PI*2, r=prr(4,PKF.meadow.rx*0.7); PSIT.push({pi:nPer++,mode:4,x:PKF.meadow.x+Math.cos(a)*r,z:PKF.meadow.z+Math.sin(a)*r*1.1,y:PG,yaw:prand()*6.28,ph:prand()*6.28}); }
+}
+// rowboats on the lake (two moored at the boathouse dock)
+const PBOAT=[];
+for(let i=0;i<NQ(10);i++) PBOAT.push({k:prr(0.3,0.78),a:prand()*6.28,w:prr(0.006,0.012)*(prand()<0.5?-1:1),ph:prand()*6.28,pi:nPer++,c:C(ppick([0xf0ece4,0xf0ece4,0x2f6b8a,0xb8443c,0x2fa38f]))});
+PBOAT.push({moor:[66,PKF.boathouse.z-4.5],c:C(0xf0ece4)},{moor:[72,PKF.boathouse.z+4.5],c:C(0x2f6b8a)});
+// free-running dogs on the meadow, delivery drones crossing the park
+const PDOGF=[]; for(let i=0;i<NQ(5);i++) PDOGF.push({di:nDog++,r:prr(6,20),w:prr(0.18,0.35)*(prand()<0.5?-1:1),a:prand()*6.28,cx:PKF.meadow.x+prr(-12,12),cz:PKF.meadow.z+prr(-18,18)});
+const PDRONE=[]; for(let i=0;i<NQ(7);i++){ const a=prand()*Math.PI; PDRONE.push({cx:prr(-60,60),cz:prr(460,980),dx:Math.cos(a),dz:Math.sin(a),L:1100,s:prand()*1100,sp:prr(14,22),y:prr(38,72),ph:prand()*6.28}); }
+
+const PL_SKIN=[0xf1c9a5,0xd8a882,0xb07a52,0x8a5a3a,0x5e3b26,0xe8b996].map(C);
+const lifeBodyMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.8});
+lifeBodyMat.onBeforeCompile=sh=>{ sh.vertexShader='attribute float aSkin;\nattribute vec3 aAlt;\n'+sh.vertexShader.replace('#include <color_vertex>','#include <color_vertex>\n#ifdef USE_INSTANCING_COLOR\nvColor.xyz=mix(vColor.xyz,aAlt,aSkin);\n#endif'); };
+function lifeGeo(parts,n,alt){ const D=pBuf(), sk=[]; parts.forEach(([geo,x,y,z,sx,sy,sz,s])=>{ const b=D.p.length; pAdd(D,NI(geo),x,y,z,sx,sy,sz,C(0xffffff),0); for(let i=b;i<D.p.length;i+=3) sk.push(s); });
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(D.p,3)); g.setAttribute('normal',new THREE.Float32BufferAttribute(D.n,3));
+  g.setAttribute('aSkin',new THREE.Float32BufferAttribute(sk,1)); const al=new Float32Array(Math.max(n,1)*3); for(let i=0;i<n;i++){ const c=alt(i); al[i*3]=c.r; al[i*3+1]=c.g; al[i*3+2]=c.b; }
+  g.setAttribute('aAlt',new THREE.InstancedBufferAttribute(al,3)); return g; }
+function pInst(geo,mat,n,cols){ const m=new THREE.InstancedMesh(geo,mat,Math.max(n,1)); m.count=n; m.frustumCulled=false;
+  for(let i=0;i<Math.max(n,1);i++) m.setColorAt(i,cols(i)); m.instanceColor.needsUpdate=true; scene.add(m); return m; }
+const SHIRT=[0x1d2733,0xe4e6ea,0x8a1c3c,0x2b5f8a,0x3c3c44,0xc9a44a,0x5a3b7a,0x1f6f5c,0xd94f8a,0x22a3c4,0xf0ece4,0xe86a3a].map(C), RUN=[0x22e6ff,0xff2bd6,0x3dffb0,0xffb02e,0xe8ecf2,0x4d7bff].map(C);
+const PANT=[0x1a1c22,0x2c3442,0x494d56,0x6b5a48,0x0e0f14,0xd8d2c4].map(C), TEAM=[C(0xe8ecf2),C(0x2b5f8a)];
+const perCol=[], perPant=[];
+for(let i=0;i<nPer;i++){ perCol.push(ppick(SHIRT)); perPant.push(ppick(PANT)); }
+PA.forEach(a=>{ if(a.pi!==undefined&&a.mode===1){ perCol[a.pi]=ppick(RUN); } });
+PSIT.forEach(s=>{ if(s.team!==undefined){ perCol[s.pi]=TEAM[s.team]; perPant[s.pi]=C(0xe8ecf2); } });
+const pBodyM=pInst(lifeGeo([[new THREE.CylinderGeometry(0.22,0.17,0.72,7),0,1.28,0,1,1,1,0],[new THREE.SphereGeometry(0.12,8,6),0,1.8,0,1,1,1,1]],nPer,()=>ppick(PL_SKIN)),lifeBodyMat,nPer,i=>perCol[i]);
+const ROBC=[0xe8ecf2,0x2a2f38,0xc9ced6,0xff9a2e].map(C), robC=[]; for(let i=0;i<nRob;i++) robC.push(ppick(ROBC));
+const pRobM=pInst(lifeGeo([[new THREE.BoxGeometry(0.46,0.7,0.3),0,1.25,0,1,1,1,0],[new THREE.BoxGeometry(0.3,0.26,0.28),0,1.78,0,1,1,1,0],[new THREE.BoxGeometry(0.26,0.06,0.03),0,1.8,0.15,1,1,1,1]],nRob,()=>C(0x22e6ff)),lifeBodyMat,nRob,i=>robC[i]);
+const limbG=new THREE.BoxGeometry(1,1,1); limbG.translate(0,-0.5,0);
+const nLimb=(nPer+nRob)*4, limbGray=C(0x6b7078);
+const pLimbM=pInst(limbG,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.85}),nLimb,i=>{ const q=i>>2; if(q>=nPer) return limbGray; return (i&3)<2?perPant[q]:perCol[q]; });
+const vcMat=()=>new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.55,metalness:0.2,vertexColors:true});
+function vcGeo(parts){ const D=pBuf(); parts.forEach(([geo,x,y,z,sx,sy,sz,col,ry,rx,rz])=>pAdd(D,NI(geo),x,y,z,sx,sy,sz,C(col),0,ry,rx,rz));
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(D.p,3)); g.setAttribute('normal',new THREE.Float32BufferAttribute(D.n,3)); g.setAttribute('color',new THREE.Float32BufferAttribute(D.c,3)); return g; }
+const gTor=new THREE.TorusGeometry(0.33,0.035,5,14);
+const pBikeM=pInst(vcGeo([[gTor,0,0.34,0.52,1,1,1,0x15171c,Math.PI/2],[gTor,0,0.34,-0.52,1,1,1,0x15171c,Math.PI/2],[gBox,0,0.62,0,0.05,0.05,1.05,0xffffff,0,-0.35],
+  [gBox,0,0.75,0.2,0.05,0.6,0.05,0xffffff],[gBox,0,1.0,-0.18,0.14,0.05,0.26,0x15171c],[gBox,0,1.05,0.42,0.52,0.04,0.04,0x15171c],[gBox,0,0.75,0.46,0.04,0.6,0.04,0xffffff]]),
+  vcMat(),nBike,()=>C(ppick([0xff2bd6,0x22e6ff,0xe8ecf2,0xffb02e,0x3dffb0])));
+const pDogM=pInst(vcGeo([[gBox,0,0.46,0,0.26,0.26,0.66,0xffffff],[gBox,0,0.66,0.4,0.2,0.2,0.26,0xffffff],[gBox,0,0.61,0.57,0.11,0.09,0.14,0x22201e],[gBox,0,0.62,-0.42,0.05,0.05,0.3,0xffffff,0,-0.7],
+  [gBox,0.09,0.17,0.24,0.08,0.34,0.08,0xffffff],[gBox,-0.09,0.17,0.24,0.08,0.34,0.08,0xffffff],[gBox,0.09,0.17,-0.24,0.08,0.34,0.08,0xffffff],[gBox,-0.09,0.17,-0.24,0.08,0.34,0.08,0xffffff]]),
+  vcMat(),nDog,()=>C(ppick([0x8a5a30,0xd8b070,0x22201e,0xf0ece4,0x6b4a2a,0xb8b0a4])));
+const pBoatM=(()=>{ const g=vcGeo([[new THREE.SphereGeometry(1,12,6,0,Math.PI*2,Math.PI/2,Math.PI/2),0,0,0,0.75,0.38,2.0,0xffffff],[gBox,0,-0.02,0,1.3,0.06,3.4,0x8a6a4a],
+    [gBox,0,0.08,-0.3,1.3,0.06,0.35,0x8a6a4a],[gBox,1.1,0.12,0,1.6,0.04,0.08,0xd8c8a0,0,0,-0.25],[gBox,-1.1,0.12,0,1.6,0.04,0.08,0xd8c8a0,0,0,0.25]]);
+  const m=pInst(g,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.6,vertexColors:true,side:THREE.DoubleSide}),PBOAT.length,i=>PBOAT[i].c); return m; })();
+const pDroneM=pInst(vcGeo([[gBox,0,0,0,0.8,0.22,0.8,0xffffff],[gBox,0,0.02,0,1.4,0.06,0.08,0x2a2e36,Math.PI/4],[gBox,0,0.02,0,1.4,0.06,0.08,0x2a2e36,-Math.PI/4],
+  [gCyl16,0.5,0.14,0.5,0.34,0.03,0.34,0x2a2e36],[gCyl16,-0.5,0.14,0.5,0.34,0.03,0.34,0x2a2e36],[gCyl16,0.5,0.14,-0.5,0.34,0.03,0.34,0x2a2e36],[gCyl16,-0.5,0.14,-0.5,0.34,0.03,0.34,0x2a2e36],
+  [gBox,0,-0.38,0,0.5,0.42,0.5,0xc8a070]]),vcMat(),PDRONE.length,i=>i%3?C(0xe8ecf2):C(0xff9a2e));
+pDroneM.scale.set(1.8,1.8,1.8); // instance positions are divided by this scale below
+const PDL0=PLP.length/3; PDRONE.forEach((d,i)=>pPt(0,-500,0,i%2?C(0xff4d6d).multiplyScalar(2.5):C(0x22e6ff).multiplyScalar(2.5)));
+const PBL0=PLP.length/3; PBOAT.forEach(()=>pPt(0,-500,0,C(0xffc27a).multiplyScalar(2.4))); // rowboat lanterns
+const parkPts=(()=>{ const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(PLP,3)); g.setAttribute('color',new THREE.Float32BufferAttribute(PLC,3));
+  const p=new THREE.Points(g,new THREE.PointsMaterial({size:6.5,map:glow,vertexColors:true,transparent:true,opacity:1,depthWrite:false,blending:THREE.AdditiveBlending,sizeAttenuation:true}));
+  p.frustumCulled=false; scene.add(p); return p; })();
+
+// matrix writer: yaw about Y, then pitch about local X, non-uniform scale (same layout as wm() in street life)
+function pm(a,i,x,y,z,yaw,pitch,sx,sy,sz){ const cy=Math.cos(yaw),sy_=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch),o=i*16;
+  a[o]=cy*sx; a[o+1]=0; a[o+2]=-sy_*sx; a[o+3]=0; a[o+4]=sy_*sp*sy; a[o+5]=cp*sy; a[o+6]=cy*sp*sy; a[o+7]=0;
+  a[o+8]=sy_*cp*sz; a[o+9]=-sp*sz; a[o+10]=cy*cp*sz; a[o+11]=0; a[o+12]=x; a[o+13]=y; a[o+14]=z; a[o+15]=1; }
+// mode: 0 walk, 1 jog, 2 cycle, 3 sit, 4 stand, 5 skate, 6 row, 7 robot walk
+function pPose(li,x,y,z,yaw,mode,cyc,s,bodyA,bi){
+  const sw=Math.sin(cyc); let bp=0, by=y, la=0, lb=0, aa=0, ab=0, lB=0, aB=0, bob=0;
+  if(mode===0||mode===7){ bob=Math.abs(Math.cos(cyc))*(mode===7?0.025:0.05); la=sw*(mode===7?0.42:0.5); lb=-la; aa=-sw*0.42; ab=-aa; }
+  else if(mode===1){ bob=Math.abs(Math.cos(cyc))*0.12; bp=0.14; la=sw*0.85; lb=-la; aB=-0.9; aa=-sw*0.6; ab=-aa; }
+  else if(mode===2){ by+=0.3; bp=0.32; lB=-0.8; la=sw*0.45; lb=-la; aB=-1.0; }
+  else if(mode===3){ by-=0.82; lB=-1.45; aB=-0.3; aa=sw*0.08; ab=-aa*0.5; }
+  else if(mode===4){ aa=sw*0.08; ab=-aa; }
+  else if(mode===5){ bp=0.22; la=sw*0.38; lb=-la; aa=-sw*0.7; ab=-aa; bob=Math.abs(Math.cos(cyc))*0.03; }
+  else if(mode===6){ by-=0.82; bp=-0.1+0.28*sw; lB=-1.2; aB=-1.2+0.5*sw; }
+  by+=bob; if(bodyA) pm(bodyA,bi,x,by,z,yaw,bp,s,s,s);
+  const cy=Math.cos(yaw), sy=Math.sin(yaw), sp=Math.sin(bp), cp=Math.cos(bp), rx=cy*0.11*s, rz=-sy*0.11*s, A=pLimbM.instanceMatrix.array, o=li*4;
+  const hx=x+sy*sp*0.9*s, hy=by+cp*0.9*s, hz=z+cy*sp*0.9*s, sx=x+sy*sp*1.62*s, shy=by+cp*1.62*s, sz=z+cy*sp*1.62*s;
+  pm(A,o,hx+rx,hy,hz+rz,yaw,lB+la,0.14*s,0.9*s,0.16*s); pm(A,o+1,hx-rx,hy,hz-rz,yaw,lB+lb,0.14*s,0.9*s,0.16*s);
+  pm(A,o+2,sx+rx*2.45,shy,sz+rz*2.45,yaw,aB+aa+bp,0.09*s,0.62*s,0.1*s); pm(A,o+3,sx-rx*2.45,shy,sz-rz*2.45,yaw,aB+ab+bp,0.09*s,0.62*s,0.1*s); }
+const SPo={x:0,y:0,z:0,yaw:0};
+function pSample(a){ const P=a.pa, L=P.L; let i=a.k; while(i<L.length-2&&L[i+1]<a.s) i++; while(i>0&&L[i]>a.s) i--; a.k=i;
+  const dx=P.x[i+1]-P.x[i], dz=P.z[i+1]-P.z[i], dl=Math.hypot(dx,dz)||1, f=(a.s-L[i])/dl;
+  SPo.x=P.x[i]+dx*f+dz/dl*a.lat; SPo.z=P.z[i]+dz*f-dx/dl*a.lat; SPo.y=P.y[i]+(P.y[i+1]-P.y[i])*f; SPo.yaw=Math.atan2(dx*a.dir,dz*a.dir); }
+PSIT.forEach(p=>pPose(p.pi,p.x,p.y,p.z,p.yaw,p.mode,p.ph,1,pBodyM.instanceMatrix.array,p.pi));
+let parkAcc=0;
+function updatePark(dt,t,frame){
+  const L=cur.lamp; uPG.value=0.05+1.05*L; parkGrassMat.emissiveIntensity=0.7*L; parkPts.material.opacity=0.1+0.9*L;
+  carousel.rotation.y=t*0.35; pGarden.position.y=PKF.garden.y+Math.sin(t*0.35)*1.2; pGarden.rotation.y=t*0.03;
+  const far=!drive.on&&(camera.position.x**2+(camera.position.z-720)**2)>1800*1800;
+  parkAcc+=dt; if(far&&frame%6!==0) return; const step=parkAcc; parkAcc=0;
+  const bA=pBodyM.instanceMatrix.array, rA=pRobM.instanceMatrix.array, kA=pBikeM.instanceMatrix.array, dA=pDogM.instanceMatrix.array;
+  for(let n=0;n<PA.length;n++){ const a=PA[n], P=a.pa;
+    a.s+=a.dir*a.sp*step;
+    if(P.closed) a.s=((a.s%P.len)+P.len)%P.len; else if(a.s>P.len){ a.s=2*P.len-a.s; a.dir=-1; } else if(a.s<0){ a.s=-a.s; a.dir=1; }
+    pSample(a); const cyc=t*a.sp*(a.mode===2?1.6:a.mode===5?1.3:4.2)+a.ph;
+    if(a.mode===7){ pm(rA,a.ri,SPo.x,SPo.y+Math.abs(Math.cos(cyc))*0.025,SPo.z,SPo.yaw,0,1,1,1); pPose(nPer+a.ri,SPo.x,SPo.y,SPo.z,SPo.yaw,7,cyc,1,null,0); continue; }
+    pPose(a.pi,SPo.x,SPo.y,SPo.z,SPo.yaw,a.mode,cyc,a.sc,bA,a.pi);
+    if(a.bi!==undefined) pm(kA,a.bi,SPo.x,SPo.y,SPo.z,SPo.yaw,0,1,1,1);
+    if(a.dog!==undefined){ const fx=Math.sin(SPo.yaw), fz=Math.cos(SPo.yaw); pm(dA,a.dog,SPo.x+fx*1.3+fz*0.5,SPo.y+Math.abs(Math.sin(cyc*1.5))*0.06,SPo.z+fz*1.3-fx*0.5,SPo.yaw,0,1,1,1); }
+  }
+  PDOGF.forEach(d=>{ d.a+=d.w*step*3; const x=d.cx+Math.cos(d.a)*d.r, z=d.cz+Math.sin(d.a)*d.r*1.3, yaw=Math.atan2(-Math.sin(d.a)*Math.sign(d.w),Math.cos(d.a)*1.3*Math.sign(d.w));
+    pm(dA,d.di,x,PG+Math.abs(Math.sin(t*9+d.r))*0.1,z,yaw,0,1.1,1.1,1.1); });
+  const oA=pBoatM.instanceMatrix.array, L0=LAKES[0];
+  PBOAT.forEach((b,i)=>{ let x,z,yaw,y=0.72+Math.sin(t*1.3+i)*0.04;
+    if(b.moor){ x=b.moor[0]; z=b.moor[1]; yaw=Math.PI/2; }
+    else { b.a+=b.w*step; x=L0.x+Math.cos(b.a)*L0.rx*b.k; z=L0.z+Math.sin(b.a)*L0.rz*b.k; const s=Math.sign(b.w); yaw=Math.atan2(-Math.sin(b.a)*L0.rx*s,Math.cos(b.a)*L0.rz*s);
+      pPose(b.pi,x,y+0.05,z,yaw+Math.PI,6,t*1.6+b.ph,1,bA,b.pi); }
+    pm(oA,i,x,y,z,yaw,0,1,1,1); const q=(PBL0+i)*3, pa=parkPts.geometry.attributes.position.array; pa[q]=x-Math.sin(yaw)*1.6; pa[q+1]=y+0.9; pa[q+2]=z-Math.cos(yaw)*1.6; });
+  const wA=pDroneM.instanceMatrix.array, ptA=parkPts.geometry.attributes.position.array, S=1/1.8;
+  PDRONE.forEach((d,i)=>{ d.s=(d.s+d.sp*step)%d.L; const u=d.s-d.L/2, x=d.cx+d.dx*u, z=d.cz+d.dz*u, y=d.y+Math.sin(t*0.8+d.ph)*1.5;
+    pm(wA,i,x*S,y*S,z*S,Math.atan2(d.dx,d.dz),0.08,1,1,1); const o=(PDL0+i)*3, on=Math.sin(t*5+d.ph)>0.3;
+    ptA[o]=x; ptA[o+1]=on?y-0.6:-500; ptA[o+2]=z; });
+  parkPts.geometry.attributes.position.needsUpdate=true;
+  [pBodyM,pRobM,pLimbM,pBikeM,pDogM,pBoatM,pDroneM].forEach(m=>m.instanceMatrix.needsUpdate=true);
 }
 
 /* ---------- points ---------- */
@@ -1631,6 +1984,7 @@ function drawRadar(){
   [[660,5600,-2600,3400],[-5600,-600,-2600,3400],[-600,660,1760,3400]].forEach(r=>c.fillRect(r[0],r[2],r[1]-r[0],r[3]-r[2]));
   c.beginPath(); ISL.forEach((q,i)=>i?c.lineTo(q[0],q[1]):c.moveTo(q[0],q[1])); c.closePath(); c.fill();
   c.fillStyle='rgba(40,110,60,0.9)'; c.fillRect(PARK.x0,PARK.z0,PARK.x1-PARK.x0,PARK.z1-PARK.z0);
+  c.fillStyle='rgba(40,120,170,0.9)'; [...LAKES,RESV].forEach(l=>{ c.beginPath(); c.ellipse(l.x,l.z,l.rx,l.rz,0,0,Math.PI*2); c.fill(); });
   stampN++;
   const ci=Math.floor(p.x/GRID), cj=Math.floor(p.z/GRID), n=Math.ceil(range/GRID)+1;
   for(let i=-n;i<=n;i++) for(let j=-n;j<=n;j++){ const l=grid.get(gk(ci+i,cj+j)); if(!l) continue;
@@ -2268,7 +2622,7 @@ function tick(){
   const dt=Math.min(clock.getDelta(),0.05); uTime.value+=dt; const t=uTime.value;
   const diff=step(dt);
   if(diff>0.003&&frame%14===0) updateEnv();
-  updateCars(dt,t); updateTrains(dt); updateExtras(dt,t); updateStreetLife(dt,t,frame); updateLiberty(t); updateBridges(); updateLampsExtra();
+  updateCars(dt,t); updateTrains(dt); updateExtras(dt,t); updateStreetLife(dt,t,frame); updatePark(dt,t,frame); updateLiberty(t); updateBridges(); updateLampsExtra();
   beamMeshes.forEach(b=>{ b.m.rotation.x=Math.sin(t*0.25+b.ph)*0.32; b.m.rotation.z=Math.cos(t*0.19+b.ph*1.3)*0.32; });
   warnPts.material.opacity=(Math.sin(t*2.4)>0.2?1:0.15)*Math.max(cur.lamp,0.35);
   sky.position.copy(camera.position);
