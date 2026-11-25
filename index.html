@@ -1135,7 +1135,7 @@ const pBioM=(()=>{ const g=gIco1.clone(), n=g.attributes.position.count;
   g.setAttribute('color',new THREE.Float32BufferAttribute(new Float32Array(n*3).fill(1),3)); g.setAttribute('aGlow',new THREE.Float32BufferAttribute(new Float32Array(n).fill(1.15),1));
   return instanced(g,parkStd({roughness:0.5}),PBIO,(d,b)=>{d.position.set(b.x,b.y+b.s*1.15,b.z);d.scale.set(b.s*0.8,b.s*1.25,b.s*0.8);},false,false); })();
 
-/* park life: agents. Persons share one body mesh + one limb mesh; robots, bikes, dogs, boats, carriages and drones are their own instanced meshes. */
+/* park life: agents. Persons are shared figures (M-023, pBodyM); robots share one limb mesh; robots, bikes, dogs, boats, carriages and drones are their own instanced meshes. */
 const MOB=isMobile?0.5:1, NQ=n=>Math.max(1,Math.round(n*MOB));
 const PA=[]; // agents moving along PPATHS
 let nPer=0, nRob=0, nBike=0, nDog=0;
@@ -1179,6 +1179,154 @@ const PCAR=[];
 { const p=PDRIVE, n=NQ(5); let k0=0, bd=1e9; for(let i=0;i<p.x.length;i++){ const d=Math.hypot(p.x[i]+127,p.z[i]-548); if(d<bd){ bd=d; k0=i; } }
   for(let i=0;i<n;i++) PCAR.push({pa:p,s:(p.L[k0]+i/n*p.len)%p.len,dir:1,sp:prr(2.6,3.2),lat:-2,k:0}); }
 
+/* shared human figure (M-023), used by park life and street life. One indexed mesh per person (~7.5 heads tall: pelvis, tapered
+   torso, neck, head, two-segment arms and legs, hands, shoes), posed on the GPU from per-instance attributes, so the CPU only
+   writes one root matrix per person. aRig = (bone, colour slot, variant mask).
+   bones: 0 torso (twist blends pelvis->chest), 1 head, 2 thigh, 3 shin, 4 foot, 5 upper arm, 6 forearm+hand, 7 coat hem/skirt
+   slots: 0 top (instanceColor), 1 skin, 2 hair (hat colour for caps), 3 bottom, 4 shoes, 5 accent, 6 glow trim, 7 thigh, 8 pelvis, 9 forearm, 10 shin
+   masks: 0 always; 1000+bits: shown for hair styles in bits (0 short, 1 long, 2 bun, 3 bald, 4 cap, 5 curly, 6 bowler hat);
+          2000+bits: outfits in bits (0 shirt, 1 coat, 2 dress, 3 t-shirt, 4 sport); 3000+k: accessory bit k (0 bag, 1 backpack, 2 glow trim)
+   iStyle = (hair style, outfit, accessory bits, build -1 slim hips/shoulders .. +1 broad shoulders); iAnim = (mode, rate, phase, variant)
+   modes: 0 walk, 1 jog, 2 cycle, 3 bench sit, 4 stand, 5 skate, 6 row, 8 drive, 9 ground sit, 10 ready stance. cycle = uTime*rate+phase.
+   No rand()/prand(): per-person variety comes from figHash(seed). */
+const figHash=(i,k)=>{ let x=Math.imul((i|0)+1,0x9E3779B1)^Math.imul(k+7,0x85EBCA77); x^=x>>>15; x=Math.imul(x,0x2C1B3C6D); x^=x>>>12; x=Math.imul(x,0x297A2D39); x^=x>>>15; return (x>>>0)/4294967296; };
+const FIG_G=(()=>{ const lo=isMobile, P=[], Nn=[], R=[], I=[], o=new THREE.Object3D();
+  const add=(g,bone,slot,mask,x,y,z,sx,sy,sz,rx,ry,rz)=>{ o.position.set(x,y,z); o.rotation.set(rx||0,ry||0,rz||0); o.scale.set(sx,sy,sz); o.updateMatrix();
+    g.applyMatrix4(o.matrix); const b=P.length/3, p=g.attributes.position.array, n=g.attributes.normal.array;
+    for(let i=0;i<p.length;i++){ P.push(p[i]); Nn.push(n[i]); } for(let i=0;i<p.length/3;i++) R.push(bone,slot,mask);
+    if(g.index){ const ix=g.index.array; for(let i=0;i<ix.length;i++) I.push(ix[i]+b); } else for(let i=0;i<p.length/3;i++) I.push(i+b); g.dispose(); };
+  const loft=(rings,seg)=>{ const p=[], ix=[], n=rings.length;
+    rings.forEach(([y,w,d,zo])=>{ for(let j=0;j<seg;j++){ const a=j/seg*Math.PI*2; p.push(Math.sin(a)*w,y,Math.cos(a)*d+(zo||0)); } });
+    for(let r=0;r<n-1;r++) for(let j=0;j<seg;j++){ const a=r*seg+j, b=r*seg+(j+1)%seg; ix.push(a,b,b+seg, a,b+seg,a+seg); }
+    const c0=p.length/3; p.push(0,rings[0][0]-0.01,rings[0][3]||0); const c1=c0+1; p.push(0,rings[n-1][0]+0.005,rings[n-1][3]||0);
+    for(let j=0;j<seg;j++){ const a=j, b=(j+1)%seg, t=(n-1)*seg; ix.push(c0,b,a, c1,t+a,t+b); }
+    const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(p,3)); g.setIndex(ix); g.computeVertexNormals(); return g; };
+  const hairCap=(seg,rows)=>{ const p=[], ix=[], V=(j,r)=>{ const ph=j/seg*Math.PI*2, th=r/rows*Math.PI; return [-Math.cos(ph)*Math.sin(th),Math.cos(th),Math.sin(ph)*Math.sin(th)]; };
+    for(let r=0;r<=rows;r++) for(let j=0;j<=seg;j++) p.push(...V(j,r));
+    for(let r=0;r<rows;r++) for(let j=0;j<seg;j++){ const d=V(j+0.5,r+0.5); if(d[1]<=0.5*d[2]-0.1-0.45*Math.max(-d[2],0)) continue;
+      const a=r*(seg+1)+j, b=a+seg+1; if(r>0) ix.push(a,b,a+1); ix.push(b,b+1,a+1); }
+    const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(p,3)); g.setAttribute('normal',new THREE.Float32BufferAttribute(p.slice(),3)); g.setIndex(ix); return g; };
+  const Sp=(a,b,t0,tl)=>new THREE.SphereGeometry(1,a,b,0,Math.PI*2,t0||0,tl||Math.PI), Cy=(r0,r1,h,s,ts,tl)=>new THREE.CylinderGeometry(r0,r1,h,s,1,true,ts||0,tl||Math.PI*2);
+  const ts=lo?6:8, ls=lo?5:7, as=lo?5:6;
+  // torso: pants/pelvis loft (slot 8) and shirt loft (slot 0); rings = [y, half width, half depth, z offset]
+  add(loft([[0.845,0.11,0.09,0],[0.92,0.165,0.112,-0.005],[1.0,0.158,0.104,0]],ts),0,8,0,0,0,0,1,1,1);
+  add(loft([[1.0,0.158,0.104,0],[1.08,0.143,0.098,0.004],[1.2,0.156,0.108,0.008],[1.31,0.176,0.116,0.006],[1.41,0.195,0.104,-0.004],[1.458,0.13,0.074,-0.01],[1.48,0.06,0.052,-0.005]],ts),0,0,0,0,0,0,1,1,1);
+  add(Cy(0.046,0.052,0.16,ls),0,1,0,0,1.53,-0.004,1,1,1);
+  // head, nose, hair: cap (short/long/bun/cap/curly; scaled in the shader for caps and curls), long back panel, bun, cap brim
+  add(Sp(lo?7:10,lo?5:7),1,1,0,0,1.655,0.008,0.093,0.117,0.103);
+  if(!lo) add(new THREE.ConeGeometry(0.017,0.04,4),1,1,0,0,1.638,0.108,1,1,1,Math.PI/2);
+  add(hairCap(lo?7:10,lo?5:7),1,2,1000+1+2+4+16+32+64,0,1.655,0.008,0.093*1.07,0.117*1.07,0.103*1.07);
+  add(Cy(0.098,0.118,0.27,lo?5:7,Math.PI/2,Math.PI),1,2,1000+2,0,1.545,-0.012,1,1,1);
+  add(new THREE.IcosahedronGeometry(0.05,0),1,2,1000+4,0,1.735,-0.095,1,1,1);
+  add(new THREE.BoxGeometry(0.15,0.012,0.085),1,5,1000+16,0,1.705,0.115,1,1,1,0.18);
+  add(new THREE.RingGeometry(0.075,0.15,8),1,5,1000+64,0,1.728,0.0,1,1,1,-Math.PI/2-0.06); // bowler brim (carriage drivers)
+  // arms (bone 5 upper, 6 forearm+hand) and legs (2 thigh, 3 shin, 4 shoe); +x is the figure's left
+  [-1,1].forEach(s=>{
+    add(new THREE.LatheGeometry([[0,0.0],[0.045,-0.025],[0.05,-0.07],[0.041,-0.31]].map(([r,y])=>new THREE.Vector2(r,y)),as),5,0,0,s*0.19,1.43,0,1,1,1);
+    add(Cy(0.043,0.032,0.3,as),6,9,0,s*0.19,0.975,0,1,1,1);
+    add(Sp(4,3),6,1,0,s*0.19,0.785,0.006,0.03,0.08,0.047);
+    add(Cy(0.084,0.058,0.53,ls),2,7,0,s*0.095,0.725,0,1,1,1);
+    add(Cy(0.057,0.038,0.47,ls),3,10,0,s*0.095,0.285,0,1,1,1);
+    add(Sp(lo?4:5,3),4,4,0,s*0.095,0.045,0.04,0.05,0.05,0.128);
+  });
+  // coat hem and skirt (follow the mean hip angle), shoulder bag + strap, backpack, glow belt
+  add(Cy(0.168,0.2,0.43,ts),7,0,2000+2,0,0.8,0,1,1,0.72);
+  add(Cy(0.162,0.24,0.47,ts),7,0,2000+4,0,0.775,0,1,1,0.74);
+  add(new THREE.BoxGeometry(0.05,0.2,0.25),0,5,3000,0.215,0.95,0.02,1,1,1);
+  add(new THREE.BoxGeometry(0.012,0.66,0.026),0,5,3000,0.0,1.2,0.124,1,1,1,0,0,0.62);
+  add(new THREE.BoxGeometry(0.27,0.36,0.13),0,5,3001,0,1.24,-0.178,1,1,1);
+  add(Cy(0.15,0.15,0.024,ts),0,6,3002,0,1.075,0.004,1,1,0.69);
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(P,3)); g.setAttribute('normal',new THREE.Float32BufferAttribute(Nn,3));
+  g.setAttribute('aRig',new THREE.Float32BufferAttribute(R,3)); g.setIndex(I); return g; })();
+const FIG_VS=`uniform float uT;
+attribute vec3 aRig; attribute vec4 iStyle; attribute vec4 iAnim; attribute vec3 iSkin; attribute vec3 iHair; attribute vec3 iBot; attribute vec3 iAcc;
+varying float vTrim;
+float hL,hR,kL,kR,aL,aR,eL,eR,fL,fR,lean,twP,twC,hyw,hpt,dy,dx,abd;
+vec3 rX(vec3 v,float a){ float c=cos(a),s=sin(a); return vec3(v.x,v.y*c+v.z*s,v.z*c-v.y*s); }
+vec3 rY(vec3 v,float a){ float c=cos(a),s=sin(a); return vec3(v.x*c+v.z*s,v.y,v.z*c-v.x*s); }
+vec3 rZ(vec3 v,float a){ float c=cos(a),s=sin(a); return vec3(v.x*c-v.y*s,v.x*s+v.y*c,v.z); }
+float kn(float c,float a,float b){ float q=max(0.,cos(c+0.6)); return a+b*q*q; }
+float legV(float h,float k){ return 0.42*cos(h)+0.42*cos(h-k); }
+void figPose(){
+  float m=iAnim.x, c=uT*iAnim.y+iAnim.z, v=iAnim.w, s=sin(c), co=cos(c), sl=sin(uT*0.31+v*40.), fc=1., plant=1.;
+  hL=0.; hR=0.; kL=0.06; kR=0.06; aL=0.04; aR=0.04; eL=0.18; eR=0.18; lean=0.; twP=0.; twC=0.; hyw=0.; hpt=0.; dy=0.; dx=0.; abd=0.07;
+  if(m<0.5){ hL=0.04+0.4*s; hR=0.04-0.4*s; kL=kn(c,0.07,1.05); kR=kn(c+3.1416,0.07,1.05); aL=-0.32*s; aR=0.32*s;
+    eL=0.2+0.32*max(0.,-s); eR=0.2+0.32*max(0.,s); lean=0.05; twP=-0.08*s; twC=0.1*s; dx=-0.014*co; fc=0.6; hyw=0.4*sl*step(0.8,v);
+    if(v<0.08){ aR=0.3; eR=1.45; hpt=0.4; } }
+  else if(m<1.5){ hL=0.12+0.6*s; hR=0.12-0.6*s; kL=kn(c,0.25,1.5); kR=kn(c+3.1416,0.25,1.5); aL=-0.55*s; aR=0.55*s; eL=1.45; eR=1.45;
+    lean=0.15; twP=-0.12*s; twC=0.14*s; fc=0.5; dy=0.03*abs(s); }
+  else if(m<2.5){ hL=1.05+0.42*s; hR=1.05-0.42*s; kL=1.3+0.5*sin(c+1.2); kR=1.3-0.5*sin(c+1.2); aL=0.55; aR=0.55; eL=0.4; eR=0.4; lean=0.42; dy=0.17; plant=0.; fc=0.7; }
+  else if(m<3.5){ hL=1.5; hR=1.47; kL=1.45+0.2*step(0.5,v); kR=1.45-0.5*step(0.7,v); aL=0.42; aR=0.38; eL=0.85; eR=0.8; lean=-0.04+0.1*step(v,0.3);
+    hyw=0.45*sl; hpt=0.12*sin(uT*0.17+v*9.); dy=-0.84; plant=0.; if(v<0.2){ aR=0.32; eR=1.5; hpt=0.4; hyw=0.; } }
+  else if(m<4.5){ float w=sin(uT*0.45+v*20.); kL=0.05+0.16*max(0.,w); kR=0.05+0.16*max(0.,-w); hL=0.04*max(0.,w); hR=0.04*max(0.,-w); dx=0.03*w; twP=0.06*w;
+    hyw=0.5*sl; eL=0.2; eR=0.2; if(v<0.22){ aR=0.32; eR=1.5; hpt=0.4; hyw=0.; } else if(v>0.78){ eL=0.35; eR=0.35; abd=0.13; } }
+  else if(m<5.5){ hL=0.1+0.35*s; hR=0.1-0.35*s; kL=kn(c,0.35,0.5); kR=kn(c+3.1416,0.35,0.5); aL=-0.7*s; aR=0.7*s; eL=0.35; eR=0.35; lean=0.25; twP=-0.1*s; twC=0.2*s; fc=0.8; abd=0.2; }
+  else if(m<6.5){ hL=1.3; hR=1.3; kL=1.15+0.3*s; kR=kL; lean=0.05+0.3*s; aL=0.9+0.45*s; aR=aL; eL=0.9-0.8*s; eR=eL; dy=-0.84; plant=0.; }
+  else if(m<8.5){ hL=1.5; hR=1.5; kL=1.4; kR=1.4; aL=0.75; aR=0.75; eL=0.7; eR=0.7; lean=0.08+0.02*s; dy=-0.84; plant=0.; hyw=0.25*sl; }
+  else if(m<9.5){ hL=1.45; hR=1.4; kL=0.35+1.5*step(0.5,v); kR=0.25+0.4*step(0.3,v); aL=-0.45; aR=-0.45; eL=0.; eR=0.; lean=-0.25; dy=-0.8; plant=0.; hyw=0.4*sl; abd=0.15; }
+  else { hL=0.32; hR=0.32; kL=0.6; kR=0.6; lean=0.3; aL=0.45; aR=0.45; eL=0.9; eR=0.9; abd=0.2; dy=0.012*sin(c*3.); hyw=0.3*sl; }
+  fL=-(hL-kL)*fc; fR=-(hR-kR)*fc;
+  if(plant>0.5) dy+=max(legV(hL,kL),legV(hR,kR))-0.84;
+}
+void figSkin(out vec3 p,out vec3 n){
+  figPose(); p=position; n=normal; float b=aRig.x, sg=p.x>0.?1.:-1., bw=iStyle.w, L=step(0.,p.x);
+  if(b<0.5||b>6.5) p.x*=1.+bw*(0.08*smoothstep(1.12,1.38,p.y)*step(p.y,1.47)-0.07*(1.-smoothstep(0.96,1.12,p.y)));
+  vec3 HC=vec3(0.,0.92,0.);
+  if(b>1.5&&b<4.5){ float h=mix(hR,hL,L), k=mix(kR,kL,L), f=mix(fR,fL,L);
+    p.x-=sg*0.0066*bw; vec3 HP=vec3(sg*0.095*(1.-0.07*bw),0.92,0.), KN=HP-vec3(0.,0.42,0.), AN=KN-vec3(0.,0.42,0.);
+    if(b>3.5){ p=AN+rX(p-AN,f); n=rX(n,f); }
+    if(b>2.5){ p=KN+rX(p-KN,-k); n=rX(n,-k); }
+    p=HP+rX(p-HP,h); n=rX(n,h); p=rY(p,twP); n=rY(n,twP); }
+  else if(b>4.5&&b<6.5){ float a=mix(aR,aL,L), e=mix(eR,eL,L);
+    p.x+=sg*0.0152*bw; vec3 SH=vec3(sg*0.19*(1.+0.08*bw),1.43,0.), EL=SH-vec3(0.,0.31,0.);
+    if(b>5.5){ p=EL+rX(p-EL,e); n=rX(n,e); }
+    p=SH+rX(p-SH,a); n=rX(n,a); p=SH+rZ(p-SH,sg*abd); n=rZ(n,sg*abd); p=rY(p,twC); n=rY(n,twC); }
+  else if(b>6.5){ vec3 HQ=vec3(0.,0.98,0.); float hm=(hL+hR)*0.5; p=HQ+rX(p-HQ,hm); n=rX(n,hm); p=rY(p,twP); n=rY(n,twP); }
+  else if(b<0.5){ float tw=mix(twP,twC,smoothstep(0.95,1.35,p.y)); p=rY(p,tw); n=rY(n,tw); }
+  else { vec3 HD=vec3(0.,1.66,0.), NK=vec3(0.,1.5,0.);
+    if(aRig.y>1.5&&aRig.y<2.5) p=HD+(p-HD)*(iStyle.x>5.5?vec3(1.12,1.3,1.12):iStyle.x>4.5?vec3(1.2,1.1,1.17):(iStyle.x>3.5?vec3(1.05,0.86,1.04):vec3(1.)));
+    p=NK+rX(rY(p-NK,hyw),-hpt); n=rX(rY(n,hyw),-hpt); }
+  if(b<1.5||(b>4.5&&b<6.5)){ float wl=b<0.5?smoothstep(0.9,1.1,position.y):1.; p=HC+rX(p-HC,-lean*wl); n=rX(n,-lean*wl); }
+  p+=vec3(dx,dy,0.);
+  float mk=aRig.z, g=floor(mk*0.001+0.0001), bits=mk-g*1000.;
+  if(g>0.5){ float vis=g<2.5?mod(floor(bits/exp2(g<1.5?iStyle.x:iStyle.y)+0.001),2.):mod(floor(iStyle.z/exp2(bits)+0.001),2.); if(vis<0.5) p=vec3(0.); }
+}
+`;
+const figMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.78,side:THREE.DoubleSide});
+figMat.onBeforeCompile=sh=>{ sh.uniforms.uT=uTime; sh.uniforms.uNight=uNight;
+  sh.vertexShader=FIG_VS+sh.vertexShader.replace('#include <color_vertex>',`#include <color_vertex>
+  { float sl=aRig.y, of=iStyle.y, ph=iAnim.z; bool dr=abs(of-2.)<0.5; vec3 top=vColor.xyz, cl=top;
+    vec3 under=mix(iSkin,vec3(0.035,0.035,0.04),step(0.45,fract(ph*1.7))), shoe=mix(vec3(0.045,0.045,0.05),vec3(0.78,0.78,0.76),step(0.72,fract(ph*2.3)));
+    if(sl>0.5&&sl<1.5) cl=iSkin; else if(sl>1.5&&sl<2.5) cl=(iStyle.x>3.5&&iStyle.x!=5.)?iAcc:iHair; else if(sl>2.5&&sl<3.5) cl=iBot;
+    else if(sl>3.5&&sl<4.5) cl=shoe; else if(sl>4.5&&sl<6.5) cl=iAcc; else if(sl>6.5&&sl<7.5) cl=dr?under:iBot; else if(sl>7.5&&sl<8.5) cl=dr?top:iBot;
+    else if(sl>8.5&&sl<9.5) cl=of>1.5?iSkin:top; else if(sl>9.5) cl=dr?under:(of>3.5?iSkin:iBot);
+    vColor.xyz=cl; vTrim=step(5.5,sl)*step(sl,6.5); }`)
+    .replace('#include <beginnormal_vertex>','vec3 objectNormal, hPos; figSkin(hPos,objectNormal);')
+    .replace('#include <begin_vertex>','vec3 transformed=hPos;');
+  // night: a little storefront fill and a cool rim so people read against lit facades instead of going black (all well under bloom)
+  sh.fragmentShader='uniform float uNight;\nvarying float vTrim;\n'+sh.fragmentShader.replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
+  totalEmissiveRadiance+=vColor*vTrim*0.55+uNight*(diffuseColor.rgb*0.14+vec3(0.35,0.55,0.8)*0.2*pow(1.-abs(dot(normal,normalize(vViewPosition))),3.));`); };
+const FIG_SKIN=[0xf3d0b0,0xe8b996,0xd8a882,0xc08a62,0xa06c48,0x8a5a3a,0x6b4428,0x4e3020].map(C);
+const FIG_HAIR=[0x14100d,0x1e1610,0x2e2018,0x46301e,0x6a4a2a,0x9a7a4a,0xc8a868,0x5a2a18,0x8a8680,0xd8d4cc,0x2a3a6a,0x6a2a5a].map(C);
+const FIG_ACC=[0x2a1e16,0x14161a,0x5a4232,0x6b2a2a,0x2b3a5a,0x8a7a5a,0x3a4a3a].map(C), FIG_NEON=[0x22e6ff,0xff4fd8,0x3dffb0,0xffb02e].map(C);
+const FIG_COAT=[0x2a2d33,0x1c2433,0x6e5a44,0x8a7a62,0x3a3f36,0x5a2a2a,0x4a4e56,0xb0a48c].map(C);
+// per-person look from a seed: f = {top, bot, skin, mode, rate, ph, of?}; fills in hair, outfit, accessories, build, pose variant
+function figLook(seed,f){ const H=k=>figHash(seed,k), r=H(1);
+  let of=f.of!==undefined?f.of:(r<0.16?2:r<0.36?1:r<0.62?3:0);
+  const fem=of===2||H(2)<0.4, q=H(3);
+  const hs=fem?(q<0.42?1:q<0.7?2:q<0.86?0:q<0.94?5:4):(q<0.46?0:q<0.6?3:q<0.74?4:q<0.86?5:q<0.94?1:2);
+  const a=H(4), trim=H(5)<0.16?4:0, ac=trim|(trim?0:(a<0.14?1:a<0.26?2:0));
+  const bw=fem?-0.3-0.5*H(6):-0.3+1.2*H(6), hq=H(8), hair=FIG_HAIR[Math.floor(hq*(hq<0.9?9:12))];
+  const acc=trim?FIG_NEON[Math.floor(H(9)*4)]:FIG_ACC[Math.floor(H(9)*FIG_ACC.length)];
+  return {top:of===1&&!f.keepTop?FIG_COAT[Math.floor(H(10)*FIG_COAT.length)]:f.top,bot:f.bot,skin:f.skin,hair,acc:f.acc||acc,hs:f.hs!==undefined?f.hs:hs,of,ac:f.acc?0:ac,bw,mode:f.mode,rate:f.rate,ph:f.ph,v:H(7)}; }
+function mkPeople(n,name,look){ const N=Math.max(n,1), g=new THREE.BufferGeometry();
+  ['position','normal','aRig'].forEach(k=>g.setAttribute(k,FIG_G.attributes[k])); g.setIndex(FIG_G.index);
+  const A={iStyle:4,iAnim:4,iSkin:3,iHair:3,iBot:3,iAcc:3}, B={}; for(const k in A){ B[k]=new Float32Array(N*A[k]); g.setAttribute(k,new THREE.InstancedBufferAttribute(B[k],A[k])); }
+  const m=new THREE.InstancedMesh(g,figMat,N); m.count=n; m.frustumCulled=false; m.name=name; m.setColorAt(0,C(0xffffff));
+  for(let i=0;i<n;i++){ const f=look(i); m.setColorAt(i,f.top); B.iStyle.set([f.hs,f.of,f.ac,f.bw],i*4); B.iAnim.set([f.mode,f.rate,f.ph,f.v],i*4);
+    B.iSkin.set([f.skin.r,f.skin.g,f.skin.b],i*3); B.iHair.set([f.hair.r,f.hair.g,f.hair.b],i*3); B.iBot.set([f.bot.r,f.bot.g,f.bot.b],i*3); B.iAcc.set([f.acc.r,f.acc.g,f.acc.b],i*3); }
+  m.instanceColor.needsUpdate=true; scene.add(m); return m; }
+
 const PL_SKIN=[0xf1c9a5,0xd8a882,0xb07a52,0x8a5a3a,0x5e3b26,0xe8b996].map(C);
 const lifeBodyMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.8});
 lifeBodyMat.onBeforeCompile=sh=>{ sh.vertexShader='attribute float aSkin;\nattribute vec3 aAlt;\n'+sh.vertexShader.replace('#include <color_vertex>','#include <color_vertex>\n#ifdef USE_INSTANCING_COLOR\nvColor.xyz=mix(vColor.xyz,aAlt,aSkin);\n#endif'); };
@@ -1194,12 +1342,23 @@ const perCol=[], perPant=[];
 for(let i=0;i<nPer;i++){ perCol.push(ppick(SHIRT)); perPant.push(ppick(PANT)); }
 PA.forEach(a=>{ if(a.pi!==undefined&&a.mode===1){ perCol[a.pi]=ppick(RUN); } });
 PSIT.forEach(s=>{ if(s.team!==undefined){ perCol[s.pi]=TEAM[s.team]; perPant[s.pi]=C(0xe8ecf2); } });
-const pBodyM=pInst(lifeGeo([[new THREE.CylinderGeometry(0.22,0.17,0.72,7),0,1.28,0,1,1,1,0],[new THREE.SphereGeometry(0.12,8,6),0,1.8,0,1,1,1,1]],nPer,()=>ppick(PL_SKIN)),lifeBodyMat,nPer,i=>perCol[i]);
+const perSkin=[]; for(let i=0;i<nPer;i++) perSkin.push(ppick(PL_SKIN)); // same prand() sequence as the old body mesh's skin picks
+// people: park agents, then three per carriage (driver + two passengers), all on the shared figure; modes/rates mirror the old pose cycles
+const PMODE=new Array(nPer).fill(0), PRATE=new Array(nPer).fill(0), PPH=new Array(nPer).fill(0), PSEAT=[];
+PA.forEach(a=>{ if(a.pi===undefined) return; PMODE[a.pi]=a.mode; PRATE[a.pi]=a.sp*(a.mode===2?1.6:a.mode===5?1.3:4.2); PPH[a.pi]=a.ph; });
+PSIT.forEach(p=>{ PMODE[p.pi]=p.team!==undefined?10:(p.mode===3&&p.y<PG+0.3?9:p.mode); PRATE[p.pi]=p.team!==undefined?2.2:1; PPH[p.pi]=p.ph; });
+PBOAT.forEach(b=>{ if(b.pi!==undefined){ PMODE[b.pi]=6; PRATE[b.pi]=1.6; PPH[b.pi]=b.ph; } });
+PCAR.forEach((c,i)=>{ c.fi=nPer+i*3; PSEAT.push([0,1.73,0.42,8],[-0.3,1.5,-1.3,3],[0.3,1.5,-1.3,3]); });
+const nFig=nPer+PCAR.length*3;
+const pBodyM=mkPeople(nFig,'parkPeople',i=>{ if(i<nPer) return figLook(5000+i,{top:perCol[i],bot:perPant[i],skin:perSkin[i],mode:PMODE[i],rate:PRATE[i],ph:PPH[i],
+    of:(PMODE[i]===1||PMODE[i]===10)?4:undefined});
+  const k=(i-nPer)%3, h=figHash(i,11);
+  return figLook(5000+i,{top:k===0?C(0x1a1c22):C([0xc23b3b,0x2b5f8a,0xe8e2d6,0x5a6b4a][Math.floor(h*4)]),bot:C(0x24262c),skin:FIG_SKIN[Math.floor(figHash(i,12)*8)],mode:PSEAT[i-nPer][3],rate:1,ph:h*6.28,of:k===0?1:undefined,keepTop:k===0,hs:k===0?6:undefined,acc:k===0?C(0x101012):undefined}); });
 const ROBC=[0xe8ecf2,0x2a2f38,0xc9ced6,0xff9a2e].map(C), robC=[]; for(let i=0;i<nRob;i++) robC.push(ppick(ROBC));
 const pRobM=pInst(lifeGeo([[new THREE.BoxGeometry(0.46,0.7,0.3),0,1.25,0,1,1,1,0],[new THREE.BoxGeometry(0.3,0.26,0.28),0,1.78,0,1,1,1,0],[new THREE.BoxGeometry(0.26,0.06,0.03),0,1.8,0.15,1,1,1,1]],nRob,()=>C(0x22e6ff)),lifeBodyMat,nRob,i=>robC[i]);
 const limbG=new THREE.BoxGeometry(1,1,1); limbG.translate(0,-0.5,0);
-const nLimb=(nPer+nRob)*4, limbGray=C(0x6b7078);
-const pLimbM=pInst(limbG,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.85}),nLimb,i=>{ const q=i>>2; if(q>=nPer) return limbGray; return (i&3)<2?perPant[q]:perCol[q]; });
+const nLimb=nRob*4, limbGray=C(0x6b7078); // robot limbs only; people are figures
+const pLimbM=pInst(limbG,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.85}),nLimb,()=>limbGray);
 const vcMat=()=>new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.55,metalness:0.2,vertexColors:true});
 function vcGeo(parts){ const D=pBuf(); parts.forEach(([geo,x,y,z,sx,sy,sz,col,ry,rx,rz])=>pAdd(D,NI(geo),x,y,z,sx,sy,sz,C(col),0,ry,rx,rz));
   const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(D.p,3)); g.setAttribute('normal',new THREE.Float32BufferAttribute(D.n,3)); g.setAttribute('color',new THREE.Float32BufferAttribute(D.c,3)); return g; }
@@ -1230,8 +1389,7 @@ const pCarM=(()=>{ const D=pBuf(), K=h=>C(h), red=K(0xb3262a), wht=K(0xf2f0ea), 
   [[-1.25,0.72],[0.3,0.52]].forEach(([z,r])=>[-1,1].forEach(s=>{ const x=s*0.76;
     pAdd(D,gWheel,x,r,z,r,r,r,wht,0.05,Math.PI/2); pAdd(D,gCyl16,x,r,z,0.09,0.12,0.09,wht,0,0,0,Math.PI/2);
     for(let k=0;k<6;k++) pAdd(D,gBox,x,r,z,0.035,r*1.95,0.035,wht,0,0,k*Math.PI/6); }));
-  [[-0.3,0xc23b3b],[0.3,0x2b5f8a]].forEach(([x,c])=>{ pAdd(D,gCyl16,x,1.72,-1.25,0.2,0.55,0.18,K(c),0); pAdd(D,gIco1,x,2.16,-1.25,0.14,0.15,0.14,K(0xe8b996),0); });
-  pAdd(D,gCyl16,0,2.0,0.45,0.22,0.55,0.2,blk,0); pAdd(D,gIco1,0,2.42,0.45,0.14,0.15,0.14,K(0xd8a882),0); pAdd(D,gCyl16,0,2.66,0.45,0.13,0.28,0.13,blk,0);
+  // driver and passengers are figures in pBodyM (seated on these seats, see PSEAT)
   const m=new THREE.InstancedMesh(pGeo(D),parkStd({roughness:0.55}),PCAR.length); m.frustumCulled=false; m.castShadow=true;
   for(let i=0;i<PCAR.length;i++) m.setColorAt(i,C(0xffffff)); m.instanceColor.needsUpdate=true; scene.add(m); return m; })();
 const PDL0=PLP.length/3; PDRONE.forEach((d,i)=>pPt(0,-500,0,i%2?C(0xff4d6d).multiplyScalar(2.5):C(0x22e6ff).multiplyScalar(2.5)));
@@ -1244,26 +1402,17 @@ const parkPts=(()=>{ const g=new THREE.BufferGeometry(); g.setAttribute('positio
 function pm(a,i,x,y,z,yaw,pitch,sx,sy,sz){ const cy=Math.cos(yaw),sy_=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch),o=i*16;
   a[o]=cy*sx; a[o+1]=0; a[o+2]=-sy_*sx; a[o+3]=0; a[o+4]=sy_*sp*sy; a[o+5]=cp*sy; a[o+6]=cy*sp*sy; a[o+7]=0;
   a[o+8]=sy_*cp*sz; a[o+9]=-sp*sz; a[o+10]=cy*cp*sz; a[o+11]=0; a[o+12]=x; a[o+13]=y; a[o+14]=z; a[o+15]=1; }
-// mode: 0 walk, 1 jog, 2 cycle, 3 sit, 4 stand, 5 skate, 6 row, 7 robot walk
-function pPose(li,x,y,z,yaw,mode,cyc,s,bodyA,bi){
-  const sw=Math.sin(cyc); let bp=0, by=y, la=0, lb=0, aa=0, ab=0, lB=0, aB=0, bob=0;
-  if(mode===0||mode===7){ bob=Math.abs(Math.cos(cyc))*(mode===7?0.025:0.05); la=sw*(mode===7?0.42:0.5); lb=-la; aa=-sw*0.42; ab=-aa; }
-  else if(mode===1){ bob=Math.abs(Math.cos(cyc))*0.12; bp=0.14; la=sw*0.85; lb=-la; aB=-0.9; aa=-sw*0.6; ab=-aa; }
-  else if(mode===2){ by+=0.3; bp=0.32; lB=-0.8; la=sw*0.45; lb=-la; aB=-1.0; }
-  else if(mode===3){ by-=0.82; lB=-1.45; aB=-0.3; aa=sw*0.08; ab=-aa*0.5; }
-  else if(mode===4){ aa=sw*0.08; ab=-aa; }
-  else if(mode===5){ bp=0.22; la=sw*0.38; lb=-la; aa=-sw*0.7; ab=-aa; bob=Math.abs(Math.cos(cyc))*0.03; }
-  else if(mode===6){ by-=0.82; bp=-0.1+0.28*sw; lB=-1.2; aB=-1.2+0.5*sw; }
-  by+=bob; if(bodyA) pm(bodyA,bi,x,by,z,yaw,bp,s,s,s);
-  const cy=Math.cos(yaw), sy=Math.sin(yaw), sp=Math.sin(bp), cp=Math.cos(bp), rx=cy*0.11*s, rz=-sy*0.11*s, A=pLimbM.instanceMatrix.array, o=li*4;
-  const hx=x+sy*sp*0.9*s, hy=by+cp*0.9*s, hz=z+cy*sp*0.9*s, sx=x+sy*sp*1.62*s, shy=by+cp*1.62*s, sz=z+cy*sp*1.62*s;
-  pm(A,o,hx+rx,hy,hz+rz,yaw,lB+la,0.14*s,0.9*s,0.16*s); pm(A,o+1,hx-rx,hy,hz-rz,yaw,lB+lb,0.14*s,0.9*s,0.16*s);
-  pm(A,o+2,sx+rx*2.45,shy,sz+rz*2.45,yaw,aB+aa+bp,0.09*s,0.62*s,0.1*s); pm(A,o+3,sx-rx*2.45,shy,sz-rz*2.45,yaw,aB+ab+bp,0.09*s,0.62*s,0.1*s); }
+// robot limbs (li = robot index): stiff-legged walk. People are posed on the GPU by the shared figure (figPose); their mode list is above FIG_G.
+function pRobLimbs(li,x,y,z,yaw,cyc){
+  const sw=Math.sin(cyc), by=y+Math.abs(Math.cos(cyc))*0.025, la=sw*0.42, aa=-sw*0.42;
+  const cy=Math.cos(yaw), sy=Math.sin(yaw), rx=cy*0.11, rz=-sy*0.11, A=pLimbM.instanceMatrix.array, o=li*4, hy=by+0.9, shy=by+1.62;
+  pm(A,o,x+rx,hy,z+rz,yaw,la,0.14,0.9,0.16); pm(A,o+1,x-rx,hy,z-rz,yaw,-la,0.14,0.9,0.16);
+  pm(A,o+2,x+rx*2.45,shy,z+rz*2.45,yaw,aa,0.09,0.62,0.1); pm(A,o+3,x-rx*2.45,shy,z-rz*2.45,yaw,-aa,0.09,0.62,0.1); }
 const SPo={x:0,y:0,z:0,yaw:0};
 function pSample(a){ const P=a.pa, L=P.L; let i=a.k; while(i<L.length-2&&L[i+1]<a.s) i++; while(i>0&&L[i]>a.s) i--; a.k=i;
   const dx=P.x[i+1]-P.x[i], dz=P.z[i+1]-P.z[i], dl=Math.hypot(dx,dz)||1, f=(a.s-L[i])/dl;
   SPo.x=P.x[i]+dx*f+dz/dl*a.lat; SPo.z=P.z[i]+dz*f-dx/dl*a.lat; SPo.y=P.y[i]+(P.y[i+1]-P.y[i])*f; SPo.yaw=Math.atan2(dx*a.dir,dz*a.dir); }
-PSIT.forEach(p=>pPose(p.pi,p.x,p.y,p.z,p.yaw,p.mode,p.ph,1,pBodyM.instanceMatrix.array,p.pi));
+PSIT.forEach(p=>pm(pBodyM.instanceMatrix.array,p.pi,p.x,p.y,p.z,p.yaw,0,1,1,1));
 let parkAcc=0;
 function updatePark(dt,t,frame){
   const L=cur.lamp; uPG.value=0.05+1.05*L; parkGrassMat.emissiveIntensity=0.7*L; parkPts.material.opacity=0.1+0.9*L;
@@ -1275,8 +1424,8 @@ function updatePark(dt,t,frame){
     a.s+=a.dir*a.sp*step;
     if(P.closed) a.s=((a.s%P.len)+P.len)%P.len; else if(a.s>P.len){ a.s=2*P.len-a.s; a.dir=-1; } else if(a.s<0){ a.s=-a.s; a.dir=1; }
     pSample(a); const cyc=t*a.sp*(a.mode===2?1.6:a.mode===5?1.3:4.2)+a.ph;
-    if(a.mode===7){ pm(rA,a.ri,SPo.x,SPo.y+Math.abs(Math.cos(cyc))*0.025,SPo.z,SPo.yaw,0,1,1,1); pPose(nPer+a.ri,SPo.x,SPo.y,SPo.z,SPo.yaw,7,cyc,1,null,0); continue; }
-    pPose(a.pi,SPo.x,SPo.y,SPo.z,SPo.yaw,a.mode,cyc,a.sc,bA,a.pi);
+    if(a.mode===7){ pm(rA,a.ri,SPo.x,SPo.y+Math.abs(Math.cos(cyc))*0.025,SPo.z,SPo.yaw,0,1,1,1); pRobLimbs(a.ri,SPo.x,SPo.y,SPo.z,SPo.yaw,cyc); continue; }
+    pm(bA,a.pi,SPo.x,SPo.y,SPo.z,SPo.yaw,0,a.sc,a.sc,a.sc);
     if(a.bi!==undefined) pm(kA,a.bi,SPo.x,SPo.y,SPo.z,SPo.yaw,0,1,1,1);
     if(a.dog!==undefined){ const fx=Math.sin(SPo.yaw), fz=Math.cos(SPo.yaw); pm(dA,a.dog,SPo.x+fx*1.3+fz*0.5,SPo.y+Math.abs(Math.sin(cyc*1.5))*0.06,SPo.z+fz*1.3-fx*0.5,SPo.yaw,0,1,1,1); }
   }
@@ -1286,10 +1435,12 @@ function updatePark(dt,t,frame){
   PBOAT.forEach((b,i)=>{ let x,z,yaw,y=WY+0.2+Math.sin(t*1.3+i)*0.04;
     if(b.moor){ x=b.moor[0]; z=b.moor[1]; yaw=Math.PI/2; }
     else { b.a+=b.w*step; x=b.cx+Math.cos(b.a)*b.rx; z=b.cz+Math.sin(b.a)*b.rz; const s=Math.sign(b.w); yaw=Math.atan2(-Math.sin(b.a)*b.rx*s,Math.cos(b.a)*b.rz*s);
-      pPose(b.pi,x,y+0.05,z,yaw+Math.PI,6,t*1.6+b.ph,1,bA,b.pi); }
+      pm(bA,b.pi,x,y+0.05,z,yaw+Math.PI,0,1,1,1); }
     pm(oA,i,x,y,z,yaw,0,1,1,1); const q=(PBL0+i)*3; pa[q]=x-Math.sin(yaw)*1.6; pa[q+1]=y+0.9; pa[q+2]=z-Math.cos(yaw)*1.6; });
   const cA=pCarM.instanceMatrix.array;
-  PCAR.forEach((c,i)=>{ c.s=(c.s+c.sp*step)%c.pa.len; pSample(c); pm(cA,i,SPo.x,SPo.y+0.1+Math.abs(Math.sin(t*5+i))*0.03,SPo.z,SPo.yaw,0,1,1,1); });
+  PCAR.forEach((c,i)=>{ c.s=(c.s+c.sp*step)%c.pa.len; pSample(c); const cy=SPo.y+0.1+Math.abs(Math.sin(t*5+i))*0.03, cs=Math.sin(SPo.yaw), cc=Math.cos(SPo.yaw);
+    pm(cA,i,SPo.x,cy,SPo.z,SPo.yaw,0,1,1,1);
+    for(let k=0;k<3;k++){ const q=PSEAT[i*3+k]; pm(bA,c.fi+k,SPo.x+cc*q[0]+cs*q[2],cy+q[1],SPo.z-cs*q[0]+cc*q[2],SPo.yaw,0,1,1,1); } });
   const wA=pDroneM.instanceMatrix.array, S=1/1.8;
   PDRONE.forEach((d,i)=>{ d.s=(d.s+d.sp*step)%d.L; const u=d.s-d.L/2, x=d.cx+d.dx*u, z=d.cz+d.dz*u, y=d.y+Math.sin(t*0.8+d.ph)*1.5;
     pm(wA,i,x*S,y*S,z*S,Math.atan2(d.dx,d.dz),0.08,1,1,1); const o=(PDL0+i)*3, on=Math.sin(t*5+d.ph)>0.3;
@@ -2092,12 +2243,9 @@ const people=WALK.filter(w=>w.type===0), robots=WALK.filter(w=>w.type===1), bots
 function mkInst(geo,mat,n){ const m=new THREE.InstancedMesh(geo,mat,Math.max(n,1)); m.count=n; m.frustumCulled=false; scene.add(m); return m; }
 const clothMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.85});
 const robMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.3,metalness:0.7});
-const torsoG=new THREE.CylinderGeometry(0.22,0.17,0.72,8); torsoG.translate(0,1.28,0);
-const pHeadG=new THREE.SphereGeometry(0.12,10,8); pHeadG.translate(0,1.8,0);
 const legG=new THREE.BoxGeometry(0.14,0.9,0.16); legG.translate(0,-0.45,0);
 const armG=new THREE.BoxGeometry(0.09,0.62,0.1); armG.translate(0,-0.31,0);
-const limbN=people.length+robots.length;
-const torsoM=mkInst(torsoG,clothMat,people.length), pHeadM=mkInst(pHeadG,clothMat,people.length);
+const limbN=robots.length; // box limbs are robots only; people are shared figures (M-023, FIG_G in park life)
 const legM=mkInst(legG,clothMat,limbN*2), armM=mkInst(armG,clothMat,limbN*2);
 const rBodyG=new THREE.BoxGeometry(0.46,0.7,0.3); rBodyG.translate(0,1.25,0);
 const rHeadG=new THREE.BoxGeometry(0.3,0.26,0.28); rHeadG.translate(0,1.78,0);
@@ -2107,18 +2255,20 @@ const rVisM=mkInst(rVisG,new THREE.MeshBasicMaterial({color:C(0x22e6ff).multiply
 const botG=new THREE.BoxGeometry(0.6,0.5,0.8); botG.translate(0,0.4,0);
 const botLG=new THREE.BoxGeometry(0.62,0.06,0.82); botLG.translate(0,0.22,0);
 const botM=mkInst(botG,robMat,bots.length), botLM=mkInst(botLG,new THREE.MeshBasicMaterial({color:C(0x3dffb0).multiplyScalar(2)}),bots.length);
-{
-  const SHIRTS=[0x1d2733,0xe4e6ea,0x8a1c3c,0x2b5f8a,0x3c3c44,0xc9a44a,0x5a3b7a,0x1f6f5c,0xd94f8a,0x22a3c4];
-  const PANTS=[0x1a1c22,0x2c3442,0x494d56,0x6b5a48,0x0e0f14];
-  const SKIN=[0xf1c9a5,0xd8a882,0xb07a52,0x8a5a3a,0x5e3b26,0xe8b996];
+const pLook=[];
+{ // one pick() each for shirt, trousers and skin per person, exactly as before, so the shared rand() sequence is unchanged
+  const SHIRTS=[0x1d2733,0xe4e6ea,0x6b2a34,0x2b4a6a,0x3c3c44,0xa88a50,0x4a3b5a,0x2f5a4c,0xc85a8a,0x2a93b4,0x8a7a6a,0xd8d0c0];
+  const PANTS=[0x1a1c22,0x2c3442,0x494d56,0x6b5a48,0x0e0f14,0x3a4a6a,0x8a7a62];
+  const SKIN=[0xf3d0b0,0xe8b996,0xd8a882,0xc08a62,0xa06c48,0x8a5a3a,0x6b4428,0x4e3020];
   const ROB=[0xe8ecf2,0x2a2f38,0xc9ced6,0xff9a2e], limbGray=C(0x6b7078);
-  people.forEach((w,i)=>{ const sh=C(pick(SHIRTS)), pa=C(pick(PANTS)); torsoM.setColorAt(i,sh); pHeadM.setColorAt(i,C(pick(SKIN)));
-    legM.setColorAt(i*2,pa); legM.setColorAt(i*2+1,pa); armM.setColorAt(i*2,sh); armM.setColorAt(i*2+1,sh); w.li=i; });
-  robots.forEach((w,i)=>{ const c=C(pick(ROB)), li=people.length+i; rBodyM.setColorAt(i,c); rHeadM.setColorAt(i,c);
+  people.forEach((w,i)=>{ const sh=C(pick(SHIRTS)), pa=C(pick(PANTS)), sk=C(pick(SKIN)); w.li=i;
+    pLook.push(figLook(i,{top:sh,bot:pa,skin:sk,mode:0,rate:w.sp*4.2,ph:w.ph})); });
+  robots.forEach((w,i)=>{ const c=C(pick(ROB)), li=i; rBodyM.setColorAt(i,c); rHeadM.setColorAt(i,c);
     legM.setColorAt(li*2,limbGray); legM.setColorAt(li*2+1,limbGray); armM.setColorAt(li*2,limbGray); armM.setColorAt(li*2+1,limbGray); w.li=li; w.ri=i; });
   bots.forEach((w,i)=>{ botM.setColorAt(i,C(pick([0xe8ecf2,0x2a2f38]))); w.bi=i; });
-  [torsoM,pHeadM,legM,armM,rBodyM,rHeadM,botM].forEach(m=>{ if(m.instanceColor) m.instanceColor.needsUpdate=true; });
+  [legM,armM,rBodyM,rHeadM,botM].forEach(m=>{ if(m.instanceColor) m.instanceColor.needsUpdate=true; });
 }
+const streetPeopleM=mkPeople(people.length,'streetPeople',i=>pLook[i]);
 function wm(a,i,x,y,z,yaw,pitch,s){
   const cy=Math.cos(yaw),sy=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch),o=i*16;
   a[o]=cy*s; a[o+1]=0; a[o+2]=-sy*s; a[o+3]=0;
@@ -2135,22 +2285,23 @@ function perim(w){
   else { s-=W; PO.x=w.x0-w.lat; PO.z=w.z1-s; PO.dx=0; PO.dz=-1; }
   PO.dx*=w.dir; PO.dz*=w.dir;
 }
-const LIFE=[torsoM,pHeadM,legM,armM,rBodyM,rHeadM,rVisM,botM,botLM];
+const LIFE=[streetPeopleM,legM,armM,rBodyM,rHeadM,rVisM,botM,botLM];
 let lifeAcc=0;
 function updateStreetLife(dt,t,frame){
   const far=!drive.on&&camera.position.distanceTo(controls.target)>900;
   lifeAcc+=dt; if(far&&frame%8!==0) return;
   const step=lifeAcc; lifeAcc=0;
-  const tA=torsoM.instanceMatrix.array,hA=pHeadM.instanceMatrix.array,lA=legM.instanceMatrix.array,aA=armM.instanceMatrix.array;
+  const pA=streetPeopleM.instanceMatrix.array,lA=legM.instanceMatrix.array,aA=armM.instanceMatrix.array;
   const rbA=rBodyM.instanceMatrix.array,rhA=rHeadM.instanceMatrix.array,rvA=rVisM.instanceMatrix.array,bA=botM.instanceMatrix.array,blA=botLM.instanceMatrix.array;
   for(let n=0;n<WALK.length;n++){
     const w=WALK[n];
     w.s=((w.s+w.dir*w.sp*step)%w.P+w.P)%w.P; perim(w);
     const yaw=Math.atan2(PO.dx,PO.dz), cyc=t*w.sp*4.2+w.ph, sw=Math.sin(cyc);
     if(w.type===2){ const y=Math.abs(Math.sin(cyc*2))*0.03; wm(bA,w.bi,PO.x,y,PO.z,yaw,0,1); wm(blA,w.bi,PO.x,y,PO.z,yaw,0,1); continue; }
-    const s=w.sc, bob=Math.abs(Math.cos(cyc))*0.05*s, rx=Math.cos(yaw)*0.11*s, rz=-Math.sin(yaw)*0.11*s;
-    if(w.type===0){ wm(tA,w.li,PO.x,bob,PO.z,yaw,0,s); wm(hA,w.li,PO.x,bob,PO.z,yaw,0,s); }
-    else { const b2=bob*0.5; wm(rbA,w.ri,PO.x,b2,PO.z,yaw,0,1); wm(rhA,w.ri,PO.x,b2,PO.z,yaw+Math.sin(t*0.7+w.ph)*0.4,0,1); wm(rvA,w.ri,PO.x,b2,PO.z,yaw+Math.sin(t*0.7+w.ph)*0.4,0,1); }
+    const s=w.sc;
+    if(w.type===0){ wm(pA,w.li,PO.x,0,PO.z,yaw,0,s); continue; } // gait, bob and twist are posed on the GPU (figSkin)
+    const bob=Math.abs(Math.cos(cyc))*0.05*s, rx=Math.cos(yaw)*0.11*s, rz=-Math.sin(yaw)*0.11*s;
+    const b2=bob*0.5; wm(rbA,w.ri,PO.x,b2,PO.z,yaw,0,1); wm(rhA,w.ri,PO.x,b2,PO.z,yaw+Math.sin(t*0.7+w.ph)*0.4,0,1); wm(rvA,w.ri,PO.x,b2,PO.z,yaw+Math.sin(t*0.7+w.ph)*0.4,0,1);
     const amp=w.type===1?0.42:0.55, hy=0.9*s+bob, shy=1.62*s+bob;
     wm(lA,w.li*2,PO.x+rx,hy,PO.z+rz,yaw,sw*amp,s); wm(lA,w.li*2+1,PO.x-rx,hy,PO.z-rz,yaw,-sw*amp,s);
     wm(aA,w.li*2,PO.x+rx*2.45,shy,PO.z+rz*2.45,yaw,-sw*amp*0.8,s); wm(aA,w.li*2+1,PO.x-rx*2.45,shy,PO.z-rz*2.45,yaw,sw*amp*0.8,s);
