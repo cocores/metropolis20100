@@ -255,3 +255,12 @@ Frame ms are SwiftShader on a shared 4-CPU host under heavy load from parallel a
 
 Notes: the mobile tier still renders shadows (2048², 137 casters) and ~3.7 M triangles a frame, which is the M-004 target.
 `isMobile` is also true for any viewport narrower than 700 px on its short side, so the `--w=960 --h=600` shot in CLAUDE.md runs the mobile tier.
+
+## Sprint 3a: Police patrol game (owner request, 2026-11-25)
+The owner wants a game with an objective: you are a police officer hunting rogue AI robots among good ones, on foot or by car, and riding the maglev between stations to search them. It replaces the old Hunt shooter and stays behind the `#hunt` link.
+
+**M-024 Police patrol** (gameplay-dev) 🔶 in-progress. Police livery and light bar on the car. Get out and walk, with a third-person camera, collisions and touch controls. Good and rogue AI robots, told apart by subtle tells. Scan, then detain. Detaining a good robot costs points. Cases per district, plus an intro card. Region: the hunt section, drive get-out/get-in, and the hunt HUD.
+
+**M-025 Maglev stations** (render-dev) 🔶 in-progress. 6–8 stations with elevated platforms, canopies, name signs, and elevators or stairs down to a street plaza. Trains stop and dwell with their doors lit. Exports `STATIONS`, `stationGroundAt`, `trainState` and `trainCarPose`. Region: the maglev section and `updateTrains`.
+
+**M-026 Ride the train** (gameplay-dev) ⏳ after M-024 and M-025 merge. The officer takes the elevator up to a platform, boards a dwelling train, rides it with an in-car or outside camera, and gets off at any station. Rogue robots hide at stations and on trains.
