@@ -264,3 +264,10 @@ The owner wants a game with an objective: you are a police officer hunting rogue
 **M-025 Maglev stations** (render-dev) 🔶 in-progress. 6–8 stations with elevated platforms, canopies, name signs, and elevators or stairs down to a street plaza. Trains stop and dwell with their doors lit. Exports `STATIONS`, `stationGroundAt`, `trainState` and `trainCarPose`. Region: the maglev section and `updateTrains`.
 
 **M-026 Ride the train** (gameplay-dev) ⏳ after M-024 and M-025 merge. The officer takes the elevator up to a platform, boards a dwelling train, rides it with an in-car or outside camera, and gets off at any station. Rogue robots hide at stations and on trains.
+
+**M-027 Central Park rink and natural skating** (render-dev) 🔶 in-progress (owner request, 2026-11-25). The owner shared a YouTube video of skating in Central Park. We can't download it, so the work follows the real rink and skating biomechanics:
+- a rounded-rectangle rink with dasher boards, a rink house, a terrace and the skyline backdrop
+- skaters push to the side and glide, with a forward lean, counter-clockwise flow and crossovers
+- beginners, pairs and kids
+
+It also fixes two M-023 nits: the hem wedge and bench sitters perching on the edge. Still frames from the owner would let us refine it.
