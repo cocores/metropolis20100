@@ -185,6 +185,18 @@ Why: the park is the city's green heart and the one place where the two eras mee
 
 **M-021 Central Park from reference photos** (render-dev) ✅ done 2026-11-25 (owner request). Known nits: fountain streams are thick and opaque; the top-down view is mirrored left to right versus the aerial photo because of the world axes. Rework the park to match the owner's 5 reference photos: the real south-to-north layout from the aerial, Bethesda Fountain with the Angel, the park drive with a carriage, Bow Bridge with rowboats, the Mall's elm canopy, and autumn foliage. The 2140 layer stays, but subtle. The photos are kept out of the repo.
 
+**M-023 Detailed, real-looking people** (render-dev) ✅ done 2026-11-25 (owner request). Street and park people now share one figure, posed in the vertex shader:
+- realistic proportions, with a neck, hands and shoes
+- two-segment limbs with a knee and elbow walk cycle
+- sit, picnic, row, drive, jog, cycle and idle poses
+- hair, hats, coats, skirts and bags; 8 skin tones
+
+Draw calls -1 on both desktop and phone. Triangles +19% on desktop and +8% on phone. City generation is unchanged (hash-checked). Follow-ups:
+- Hide street people when the camera is more than 900 m away, to win back the orbit triangles.
+- Coat hems show a dark wedge mid-stride.
+- Bench sitters sit near the front edge.
+- People get no real lamp light at night.
+
 **M-015 Real NYC/NJ footprints** (render-dev + gameplay-dev). ⛔ Blocked on network only: owner approved the scope (Manhattan + Jersey City + Hoboken) on 2026-11-24. Data source is OpenStreetMap; Google 3D Tiles was ruled out because its terms forbid extracting building geometry.
 Rebuild the city from OpenStreetMap building footprints and heights for Manhattan plus the Jersey City/Hoboken waterfront, with 2140 upgrades grown from each real building.
 - It would replace geography 515-538 (the island outline), procedural buildings 539-667 and the two hero placements, and it would feed instancing 668-692, the collision/radar `B`, `district()` 1495 and the set-piece anchors (bridges, pads, Liberty).
