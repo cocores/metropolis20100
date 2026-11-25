@@ -181,6 +181,8 @@ Why: the park is the city's green heart and the one place where the two eras mee
 - Its own seeded RNG, so the rest of the city doesn't reshuffle. Night lighting that reads from the orbit view. Phone tier capped.
 - Region: the park section plus a new park-life section after it. At most one call line in the loop.
 
+**M-020 Detailed monorail** (render-dev #3) ✅ done (owner request). The guideway is an I-beam on tapered T-pylons. Cars have shaped bodies, a shader-drawn window band with lit interiors and passenger silhouettes, doors, route 21/40 livery and bellows between cars. Bullet-nose end cars. Cost: +3 draw calls, +66k triangles. Follow-up: the skirts look heavy in Day; optional stations were skipped.
+
 **M-015 Real NYC/NJ footprints** (render-dev + gameplay-dev). ⛔ Blocked on network only: owner approved the scope (Manhattan + Jersey City + Hoboken) on 2026-11-24. Data source is OpenStreetMap; Google 3D Tiles was ruled out because its terms forbid extracting building geometry.
 Rebuild the city from OpenStreetMap building footprints and heights for Manhattan plus the Jersey City/Hoboken waterfront, with 2140 upgrades grown from each real building.
 - It would replace geography 515-538 (the island outline), procedural buildings 539-667 and the two hero placements, and it would feed instancing 668-692, the collision/radar `B`, `district()` 1495 and the set-piece anchors (bridges, pads, Liberty).
