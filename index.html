@@ -126,7 +126,11 @@ body{background:var(--bg);color:var(--text);overflow:hidden;
 .hud-btns button{font:inherit;font-size:13px;font-weight:600;border:0;cursor:pointer;color:var(--text);background:transparent;padding:9px 13px;border-radius:999px;}
 .hud-btns button:focus-visible,.vbtns button:focus-visible{outline:2px solid var(--glow);outline-offset:2px;}
 #exitBtn{background:var(--chip);color:var(--chip-text);}
-.keys{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 20px);text-align:center;font-size:13px;color:#fff;text-shadow:0 1px 8px rgba(0,0,0,0.8);}
+.keys{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 22px);width:max-content;max-width:min(680px,calc(100% - 400px));box-sizing:border-box;
+  padding:10px 18px;border-radius:22px;background:rgba(8,10,18,0.82);border:1px solid rgba(255,255,255,0.16);color:#fff;font-size:16px;line-height:1.45;text-align:center;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);pointer-events:none;transition:opacity 1.2s;}
+.keys.fade{opacity:0;} .keys span{white-space:nowrap;}
+@media (max-width:760px){ .keys{max-width:calc(100% - 32px);bottom:calc(env(safe-area-inset-bottom,0px) + 262px);} }
 #stick{position:absolute;left:22px;bottom:calc(env(safe-area-inset-bottom,0px) + 26px);width:136px;height:136px;border-radius:50%;
   background:var(--panel);border:1px solid var(--edge);pointer-events:auto;touch-action:none;display:none;
   backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);}
@@ -135,6 +139,9 @@ body{background:var(--bg);color:var(--text);overflow:hidden;
 .vbtns button{width:66px;height:66px;border-radius:50%;border:1px solid var(--edge);background:var(--panel);color:var(--text);
   font:inherit;font-size:14px;font-weight:600;touch-action:none;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);}
 .vbtns button.on{background:var(--chip);color:var(--chip-text);}
+.vbtns button,#stick{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;cursor:pointer;}
+#stick::after{content:'Steer';position:absolute;left:0;right:0;top:100%;margin-top:3px;text-align:center;font-size:13px;font-weight:600;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,0.9);pointer-events:none;}
+body.mousectl #stick{display:block;} body.mousectl .vbtns{display:flex;}
 @media (pointer:coarse){ #stick{display:block;} .vbtns{display:flex;} .keys{display:none;} }
 .compass{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 80px);width:240px;margin-left:-120px;height:28px;overflow:hidden;border-radius:999px;
   background:var(--panel);border:1px solid var(--edge);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
@@ -249,7 +256,7 @@ body.driving .title,body.driving .dock{display:none;}
   <div class="compass" aria-hidden="true"><div id="compassStrip"></div></div>
   <canvas id="radar" aria-label="Map of the area around you"></canvas>
   <div class="toast" id="toast" aria-live="polite"><b id="toastT"></b><span id="toastS"></span></div>
-  <div class="keys" id="keysHint">W/S speed, A/D steer, Space climb, Shift descend, B boost, V view, M sound, Esc exits</div>
+  <div class="keys" id="keysHint"><span>Arrow keys: steer and speed</span> · <span>Space/Shift: up/down</span> · <span>B: boost</span> · <span>Escape or Exit: back to city</span></div>
   <div id="cross" hidden></div><div id="lockBox" hidden></div>
   <div id="killPop" aria-live="polite"></div>
   <div id="wreck" hidden>Wrecked</div>
@@ -1852,15 +1859,44 @@ const hud=document.getElementById('hud'), spdEl=document.getElementById('spd'), 
 const viewBtn=document.getElementById('viewBtn'), lightBtn=document.getElementById('lightBtn');
 function modeName(){ for(const k in P) if(P[k]===target) return k; return 'night'; }
 function syncLightBtn(){ const m=modeName(); lightBtn.textContent=m[0].toUpperCase()+m.slice(1); }
+/* fly-mode spawn: hover above a 120-200 m rooftop pad in Downtown, facing the megatower, with open air ahead and behind */
+const MEGA={x:-37.5,z:-165};
+function solidAt(x,y,z,rad){ const ci=Math.floor(x/GRID), cj=Math.floor(z/GRID);
+  for(let di=-1;di<=1;di++) for(let dj=-1;dj<=1;dj++){ const l=grid.get(gk(ci+di,cj+dj)); if(!l) continue;
+    for(const idx of l){ const b=B[idx]; if(y<b.y0-rad||y>b.y0+b.h+rad) continue;
+      const c=Math.cos(b.rot), s=Math.sin(b.rot), dx=x-b.x, dz=z-b.z;
+      if(Math.abs(dx*c-dz*s)<b.w/2+rad&&Math.abs(dx*s+dz*c)<b.d/2+rad) return true; } }
+  return false; }
+let spawnPt=null;
+function pickSpawn(){
+  let best=null, bestS=-1e9;
+  for(const p of PADS){ const y=p.y+6; if(y<120||y>200) continue;
+    const dx=MEGA.x-p.x, dz=MEGA.z-p.z, L=Math.hypot(dx,dz), ux=dx/L, uz=dz/L;
+    let sc=0, clear=0;
+    for(let d=4;d<=Math.min(L-60,600);d+=6){ if(solidAt(p.x+ux*d,y,p.z+uz*d,4)) break; clear=d; }
+    sc+=Math.min(clear,400);
+    for(let d=6;d<=22;d+=4) if(solidAt(p.x-ux*d,y+4.6*d/18,p.z-uz*d,2)) sc-=400;
+    const dn=district(p.x,p.z); if(dn==='Downtown') sc+=150; else if(dn==='Midtown South'||dn==='Financial District') sc+=60;
+    sc-=Math.abs(y-160)*0.5; if(L<300) sc-=200;
+    if(sc>bestS){ bestS=sc; best={x:p.x,y,z:p.z,yaw:Math.atan2(ux,uz)}; } }
+  return best||{x:0,y:160,z:-1000,yaw:Math.atan2(MEGA.x,MEGA.z+1000)};
+}
+let keysFadeT=0;
 function enterDrive(){
   drive.saved={pos:camera.position.clone(),tgt:controls.target.clone()};
-  drive.on=true; drive.pos.set(0,18,-1000); drive.yaw=0; drive.speed=12; drive.vy=0; drive.cockpit=false;
+  if(!spawnPt) spawnPt=pickSpawn();
+  const sp=spawnPt;
+  drive.on=true; drive.pos.set(sp.x,sp.y,sp.z); drive.yaw=sp.yaw; drive.speed=0; drive.vy=0; drive.cockpit=false;
   controls.enabled=false; controls.autoRotate=false; clearTimeout(idle);
   myCar.visible=true; cabinMesh.visible=true; viewBtn.textContent='Cockpit';
-  camera.near=0.3; camera.fov=62; camera.updateProjectionMatrix();
-  camera.position.set(0,23,-1016);
+  camera.near=0.3; camera.fov=62; camera.updateProjectionMatrix(); fovNow=62;
+  const fx=Math.sin(sp.yaw), fz=Math.cos(sp.yaw);
+  camera.position.set(sp.x-fx*14,sp.y+4.6,sp.z-fz*14); camera.lookAt(sp.x+fx*9,sp.y+1.6,sp.z+fz*9);
   document.body.classList.add('driving'); hud.hidden=false; syncLightBtn();
-  cockpit.visible=false; canopyFrame.visible=true; drive.boost=1; drive.shake=0; drive.landed=false; drive.f=0; lastDistrict='';
+  if(!matchMedia('(pointer:coarse)').matches) document.body.classList.add('mousectl');
+  const kh=document.getElementById('keysHint'); kh.classList.remove('fade'); clearTimeout(keysFadeT); keysFadeT=setTimeout(()=>kh.classList.add('fade'),8000);
+  cockpit.visible=false; canopyFrame.visible=true; drive.boost=1; drive.shake=0; drive.landed=false; drive.f=0;
+  lastDistrict=district(sp.x,sp.z); toast(lastDistrict,(Math.abs(sp.x)<=halfW(sp.z)+16?'Manhattan · ':'')+'hovering, facing the megatower');
   resetTrail(); trailPts.visible=true; initAudio();
 }
 function exitDrive(){
@@ -1870,7 +1906,7 @@ function exitDrive(){
   camera.near=1; camera.fov=40; camera.updateProjectionMatrix();
   camera.position.copy(drive.saved.pos); controls.target.copy(drive.saved.tgt);
   controls.enabled=true; controls.autoRotate=tour; controls.update();
-  document.body.classList.remove('driving'); hud.hidden=true;
+  document.body.classList.remove('driving','mousectl'); hud.hidden=true;
 }
 function toggleView(){ drive.cockpit=!drive.cockpit; cabinMesh.visible=!drive.cockpit; canopyFrame.visible=!drive.cockpit; cockpit.visible=drive.cockpit; viewBtn.textContent=drive.cockpit?'Chase':'Cockpit'; }
 document.getElementById('fly').addEventListener('click',enterDrive);
@@ -1879,6 +1915,7 @@ viewBtn.addEventListener('click',toggleView);
 lightBtn.addEventListener('click',()=>{ const order=['day','dusk','night'], next=order[(order.indexOf(modeName())+1)%3]; modeBtns.find(b=>b.dataset.mode===next).click(); syncLightBtn(); });
 addEventListener('keydown',e=>{ if(!drive.on) return; keys[e.code]=true;
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+  if(/^(Arrow|Key[WASDRFB]$|Space|Shift)/.test(e.code)) document.body.classList.remove('mousectl');
   if(e.code==='KeyV'&&!e.repeat) toggleView(); if(e.code==='KeyM'&&!e.repeat) toggleMute(); if(e.code==='Escape') exitDrive(); });
 addEventListener('keyup',e=>{ keys[e.code]=false; });
 addEventListener('blur',()=>{ for(const k in keys) keys[k]=false; });
