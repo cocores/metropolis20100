@@ -2819,25 +2819,47 @@ const _dir=new THREE.Vector3(), _want=new THREE.Vector3(), _look=new THREE.Vecto
 const _flip=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),Math.PI);
 const boostBar=document.getElementById('boostBar'), speedFx=document.getElementById('speedfx'), hitFx=document.getElementById('hitfx');
 let lastHit=-9, lastDistrict='', fovNow=62;
+window.__drive={drive,solidAt}; /* test hook for tools/shot.js --eval (M-016/M-017 evals) */
+/* M-017: chase-camera line of sight. True when the segment o->(x,y,z) passes no building (sampled every ~1.5 m) */
+const _co=new THREE.Vector3();
+function camRayClear(o,x,y,z){ const dx=x-o.x, dy=y-o.y, dz=z-o.z, n=Math.max(2,Math.ceil(Math.hypot(dx,dy,dz)/1.5));
+  for(let i=1;i<=n;i++){ const f=i/n; if(solidAt(o.x+dx*f,o.y+dy*f,o.z+dz*f,0.6)) return false; } return true; }
+const CAM_K=[1,0.8,0.62,0.46,0.32,0.18];
 function updateDrive(dt,t){
   const K=c=>!!keys[c];
-  const fwd=Math.max(-1,Math.min(1,(K('KeyW')||K('ArrowUp')?1:0)-(K('KeyS')||K('ArrowDown')?1:0)+stick.y));
+  if(!drive.f){ drive.pushX=drive.pushZ=0; drive.climbT=0; drive.camK=1; }
+  const boostKey=K('KeyB')||vbtn.boost;
+  let fwd=Math.max(-1,Math.min(1,(K('KeyW')||K('ArrowUp')?1:0)-(K('KeyS')||K('ArrowDown')?1:0)+stick.y));
+  if(boostKey) fwd=Math.max(fwd,1); /* M-016: B implies forward */
   const turn=Math.max(-1,Math.min(1,(K('KeyA')||K('ArrowLeft')?1:0)-(K('KeyD')||K('ArrowRight')?1:0)-stick.x));
   const vert=(K('Space')||K('KeyR')||vbtn.up?1:0)-(K('ShiftLeft')||K('ShiftRight')||K('KeyF')||vbtn.down?1:0);
-  const boosting=(K('KeyB')||vbtn.boost)&&fwd>0.1&&drive.boost>0.02;
+  const boosting=boostKey&&fwd>0.1&&drive.boost>0.02;
   drive.boost=Math.max(0,Math.min(1,drive.boost+(boosting?-0.28:0.1)*dt));
   const maxF=boosting?150:80;
   drive.speed+=fwd*(boosting?75:36)*dt; drive.speed*=Math.exp(-dt*(Math.abs(fwd)<0.05?0.8:0.22));
   if(drive.speed>maxF) drive.speed+=(maxF-drive.speed)*Math.min(1,dt*2.5);
   drive.speed=Math.max(-20,Math.min(150,drive.speed));
+  /* M-016 touch auto-cruise: a mostly-sideways stick keeps ~22 km/h, so turning never stalls into a wall */
+  if(stick.id!==null&&Math.abs(stick.x)>0.25&&Math.abs(stick.x)>Math.abs(stick.y)&&stick.y>-0.3&&drive.speed<6.2) drive.speed=Math.min(6.2,drive.speed+12*dt);
   drive.yaw+=turn*dt*(1.35-0.35*Math.min(Math.abs(drive.speed)/150,1));
-  drive.vy+=vert*34*dt; drive.vy*=Math.exp(-dt*2.6); drive.vy=Math.max(-26,Math.min(26,drive.vy));
+  /* M-016: the climb rate ramps while Up is held (13 m/s at first, up to 40 m/s after ~2 s) */
+  if(vert>0){ drive.climbT+=dt; drive.vy+=(Math.min(40,13+12*drive.climbT)-drive.vy)*(1-Math.exp(-dt*3)); }
+  else { drive.climbT=0; drive.vy+=vert*34*dt; drive.vy*=Math.exp(-dt*2.6); drive.vy=Math.max(-26,Math.min(40,drive.vy)); }
   _dir.set(Math.sin(drive.yaw),0,Math.cos(drive.yaw));
   const p=drive.pos; p.addScaledVector(_dir,drive.speed*dt); p.y+=drive.vy*dt;
+  if(drive.pushX||drive.pushZ){ p.x+=drive.pushX*dt; p.z+=drive.pushZ*dt; const pd=Math.exp(-dt*6); drive.pushX*=pd; drive.pushZ*=pd; if(Math.abs(drive.pushX)+Math.abs(drive.pushZ)<0.05) drive.pushX=drive.pushZ=0; }
   drive.roofT=null;
+  const px0=p.x, pz0=p.z;
   if(collide(p,2.2)){
     if(Math.abs(drive.speed)>12&&t-lastHit>0.45){ lastHit=t; drive.shake=Math.min(1,Math.abs(drive.speed)/70); hitFx.style.opacity=String(0.35+drive.shake*0.6); setTimeout(()=>{ hitFx.style.opacity='0'; },90); thud(drive.shake); }
-    drive.speed*=Math.pow(0.02,dt);
+    /* M-016: slide along the wall. Keep the tangential velocity, drop the part into the wall, add a small bounce */
+    let nx=p.x-px0, nz=p.z-pz0; const nl=Math.hypot(nx,nz);
+    const vx=_dir.x*drive.speed, vz=_dir.z*drive.speed, vn=nl>1e-4?(vx*nx+vz*nz)/nl:0;
+    if(vn<0){ nx/=nl; nz/=nl; const tx=vx-vn*nx, tz=vz-vn*nz, ts=Math.hypot(tx,tz), sg=drive.speed<0?-1:1;
+      drive.pushX=-vn*0.25*nx; drive.pushZ=-vn*0.25*nz;
+      if(ts>Math.abs(drive.speed)*0.35){ drive.yaw=Math.atan2(sg*tx,sg*tz); drive.speed=sg*ts*0.9; _dir.set(Math.sin(drive.yaw),0,Math.cos(drive.yaw)); }
+      else drive.speed*=0.2;
+    } else drive.speed*=Math.pow(0.02,dt);
   }
   if(drive.roofT!==null&&drive.roofT>8&&Math.abs(drive.speed)<5&&!drive.landed){ drive.landed=true; toast('Landed','On a rooftop '+Math.round(drive.roofT)+' m up'); }
   if(drive.roofT===null) drive.landed=false;
@@ -2845,7 +2867,7 @@ function updateDrive(dt,t){
   p.y=Math.min(p.y,1200); p.x=Math.max(-3400,Math.min(3400,p.x)); p.z=Math.max(-3200,Math.min(3500,p.z));
   const k=1-Math.exp(-dt*5);
   drive.roll+=(-turn*0.38*Math.min(Math.abs(drive.speed)/30,1)-drive.roll)*k;
-  drive.pitch+=(-drive.vy*0.018-drive.pitch)*k;
+  drive.pitch+=(-Math.max(-26,Math.min(26,drive.vy))*0.018-drive.pitch)*k;
   myCar.position.set(p.x,p.y+Math.sin(t*3)*0.07,p.z); myCar.rotation.set(drive.pitch,drive.yaw,drive.roll);
   carSpot.intensity=0.4+3.2*cur.lamp; underL.intensity=0.6+1.6*cur.lamp; coneU.uL.value=cur.lamp;
   fans.forEach(f=>{ f.rotation.y+=dt*(10+Math.abs(drive.speed)*0.5+Math.abs(drive.vy)*2+(boosting?20:0)); });
@@ -2858,9 +2880,15 @@ function updateDrive(dt,t){
     myCar.updateMatrixWorld(); _cv.set(0,1.25,0.2); myCar.localToWorld(_cv);
     camera.position.copy(_cv); camera.quaternion.copy(myCar.quaternion).multiply(_flip);
   } else {
-    _want.set(p.x,p.y+4.6,p.z).addScaledVector(_dir,-14-Math.min(Math.abs(drive.speed),150)*0.03);
+    const back=14+Math.min(Math.abs(drive.speed),150)*0.03;
+    /* M-017: ray-test car -> chase spot; when a building is in the way pull the camera in and up (at once), then ease back out */
+    _co.set(p.x,p.y+1.6,p.z); let kT=CAM_K[CAM_K.length-1];
+    for(const ck of CAM_K){ if(camRayClear(_co,p.x-_dir.x*back*ck,p.y+4.6+(1-ck)*7,p.z-_dir.z*back*ck)){ kT=ck; break; } }
+    drive.camK=kT<drive.camK?kT:drive.camK+(kT-drive.camK)*(1-Math.exp(-dt*1.5));
+    _want.set(p.x,p.y+4.6+(1-drive.camK)*7,p.z).addScaledVector(_dir,-back*drive.camK);
     camera.position.lerp(_want,1-Math.exp(-dt*5));
-    _look.set(p.x,p.y+1.6,p.z).addScaledVector(_dir,9);
+    if(!camRayClear(_co,camera.position.x,camera.position.y,camera.position.z)) camera.position.copy(_want);
+    _look.set(p.x,p.y+1.6,p.z).addScaledVector(_dir,2+7*drive.camK); /* pulled-in camera looks down at the car */
     camera.lookAt(_look);
   }
   if(drive.shake>0.01){ const s=drive.shake*0.7; camera.position.x+=(Math.random()-0.5)*s; camera.position.y+=(Math.random()-0.5)*s; camera.position.z+=(Math.random()-0.5)*s; }
