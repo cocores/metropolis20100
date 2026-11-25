@@ -107,7 +107,7 @@ Why: "dropping in" should be a reveal you control. Today the first frame is a gl
   It fades after about 8 s. Fly shot: the hint is legible.
 - The Exit-restores-orbit behaviour (Q75-14) is unchanged. Verify with the eval `fly.click(); exitBtn.click()` and compare to the orbit shot.
 
-**M-004 Phone render budget** (perf-qa-dev; render-dev reviews). Blocked on M-001 baselines.
+**M-004 Phone render budget** (perf-qa-dev) ✅ done 2026-11-25. Phone draw calls 303 → 175 (−42%), ms/frame −44–56%. Phones now build the same city as desktop (BSP fix, `mkeep` hash decimation). No sun shadows at Night on any tier. Phone shadows are 1024² and throttled. Bloom runs at half resolution. Street life is hidden beyond 900 m.
 Why: "must work on phones" is a hard constraint, and today it is untested.
 - Region: renderer 293-315, post 2094-2107, and `isMobile` branches. Mobile tier: shadows off or 1024² static, bloom at half resolution, DPR cap ≤ 1.5. At Night, `sun.castShadow` is off on all tiers.
 - With `--mobile --metrics`, calls and ms/frame are each ≥ 30% below the M-001 mobile baseline. Decimation uses a second seeded RNG, so the mobile and desktop orbit shots have the same tower layout.
@@ -237,7 +237,7 @@ Carry-overs occupy regions that nobody else may touch: **M-001** (`tools/shot.js
 
 **Coordination:** M-007 must not edit car emissives (1383-1430). It posts its new bloom threshold for M-014 to respect. M-006 must not touch HUD CSS outside 121/130.
 Sprint exit: all tickets merged one at a time. After each merge, re-shoot orbit night, orbit dusk, fly and `--mobile` fly, all error-free. QA personas re-run their fly sessions.
-Sprint 3 (started 2026-11-25, owner go-ahead): M-016 + M-017 (gameplay-dev) 🔶 and M-004 (perf-qa-dev) 🔶 are running. M-008/M-018 (HUD and dock) wait until M-024 merges, because both edit the dock.
+Sprint 3 (started 2026-11-25, owner go-ahead): M-016 + M-017 (gameplay-dev) 🔶 running; M-004 ✅ merged. M-008/M-018 (HUD and dock) wait until M-024 merges, because both edit the dock.
 
 ## M-001 baseline (2026-11-24, perf-qa-dev)
 
