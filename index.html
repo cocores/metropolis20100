@@ -507,6 +507,7 @@ cityMat.onBeforeCompile=(sh)=>{
     .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor,0.06,cWin);')
     .replace('#include <metalnessmap_fragment>','#include <metalnessmap_fragment>\nmetalnessFactor=mix(metalnessFactor,0.8,cWin);')
     .replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
+      float cPx=smoothstep(25.0,300.0,length(vViewPosition));
       float cKey=mix(cR2,fract(cTs*7.31),cMo);
       vec3 cLed=mix(vec3(0.72,0.88,1.0),vec3(1.0,0.82,0.6),step(0.62,cKey));
       cLed=mix(cLed,vNeon,0.35*cMo*step(0.8,cKey));
@@ -516,26 +517,26 @@ cityMat.onBeforeCompile=(sh)=>{
       float cInt=mix(0.55+0.7*cF.y,0.9,cAy);
       float cBlind=mix(mix(1.0,0.55+0.45*step(0.45,fract(cF.y*7.0)),step(0.2,cR2)*step(cR2,0.36)),1.0,cAx);
       float cSil=mix(1.0-0.85*step(cR2,0.07)*step(abs(cF.x-0.5-0.15*sin(cR*40.0)),0.11)*step(cF.y,0.62),1.0,cAx);
-      totalEmissiveRadiance+=cWin*cLit*cDim*uNight*cLed*1.05*cInt*cBlind*cSil;
+      totalEmissiveRadiance+=cWin*cLit*cDim*uNight*cLed*1.05*cInt*cBlind*cSil*mix(0.62,1.0,cPx);
       vec3 cShopC=clamp(abs(mod(cShopR*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);
-      totalEmissiveRadiance+=cShop*cMull*(0.35+uNight)*mix(vec3(1.0,0.85,0.65),vec3(0.75,0.9,1.0),step(0.5,cShopR))*1.3;
+      totalEmissiveRadiance+=cShop*cMull*(0.35+uNight)*mix(vec3(1.0,0.85,0.65),vec3(0.75,0.9,1.0),step(0.5,cShopR))*1.3*mix(0.3,1.0,cPx);
       totalEmissiveRadiance+=cSign*step(0.25,cShopR)*cShopC*(0.8+2.4*uNight);
-      totalEmissiveRadiance+=diffuseColor.rgb*(1.0-cRoof)*(1.0-smoothstep(3.0,26.0,vWPos.y))*uNight*0.75;
+      totalEmissiveRadiance+=diffuseColor.rgb*(1.0-cRoof)*(1.0-smoothstep(3.0,26.0,vWPos.y))*uNight*mix(0.18,0.75,cPx);
       { float lax=mod(vWPos.x+337.5,75.0)-37.5, llz=mod(vWPos.z+1459.0,18.0)-9.0;
         float lpA=exp(-llz*llz/40.0)*exp(-pow(max(0.0,abs(lax)-7.0),2.0)/12.0);
         float lsz=abs(mod(vWPos.z+1456.0,32.0)-16.0), lsx=mod(vWPos.x+9.5,19.0)-9.5;
         float lpS=exp(-lsx*lsx/30.0)*exp(-pow(max(0.0,lsz-4.5),2.0)/8.0);
         float lh=(1.0-smoothstep(2.0,16.0,vWPos.y))*(1.0-cRoof)*(1.0-step(330.0,abs(vWPos.x)));
-        totalEmissiveRadiance+=(diffuseColor.rgb*0.9+vec3(0.05,0.06,0.07))*vec3(0.85,0.93,1.0)*max(lpA,lpS)*lh*uNight*1.6; }
+        totalEmissiveRadiance+=(diffuseColor.rgb*0.9+vec3(0.05,0.06,0.07))*vec3(0.85,0.93,1.0)*max(lpA,lpS)*lh*uNight*mix(0.55,1.6,cPx); }
       float cTv=cWin*cLit*step(0.9,cR2)*(1.0-step(0.95,cR2))*(1.0-cAx);
       totalEmissiveRadiance+=cTv*uNight*vec3(0.3,0.5,1.0)*(0.6+0.6*sin(uTime*7.0+cR*30.0)*sin(uTime*3.1+cR*11.0));
       float cDoor=cShop*(1.0-step(0.9,abs(fract(cH/9.0)-0.5)*9.0))*step(0.45,cShopR);
       totalEmissiveRadiance+=cDoor*vec3(1.0,0.85,0.6)*(0.4+1.2*uNight);
       float cPulse=0.82+0.18*sin(uTime*1.8+vWPos.y*0.04+vWPos.x*0.01);
-      totalEmissiveRadiance+=cNeon*vNeon*(0.5+3.2*uNight)*cPulse*(1.0+0.8*vHero);
+      totalEmissiveRadiance+=cNeon*vNeon*(0.5+3.2*uNight)*cPulse*(1.0+0.8*vHero)*mix(0.3,1.0,cPx);
       totalEmissiveRadiance+=vHero*(1.0-cRoof)*(1.0-cWin)*(1.0-cNeon)*mix(diffuseColor.rgb,vNeon,0.45)*(0.12+0.5*uNight)*(0.55+0.45*smoothstep(0.0,700.0,vWPos.y));
       float cStream=cEdge*step(0.5,vStyle)*smoothstep(0.93,1.0,fract(vWPos.y/90.0-uTime*0.35+ch21(floor(vWPos.xz/40.0))));
-      totalEmissiveRadiance+=cStream*vec3(0.9,1.0,1.0)*(0.6+2.6*uNight);`);
+      totalEmissiveRadiance+=cStream*vec3(0.9,1.0,1.0)*(0.6+2.6*uNight)*mix(0.35,1.0,cPx);`);
 };
 
 const waterMat=new THREE.MeshStandardMaterial({color:C(0x0a1a2a),roughness:0.12,metalness:0.0,envMapIntensity:1.4});
@@ -1110,10 +1111,19 @@ function makePoints(arr,color,size,mult){
   const m=new THREE.PointsMaterial({size,map:glow,color:C(color).multiplyScalar(mult),transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,sizeAttenuation:true});
   const p=new THREE.Points(g,m); p.frustumCulled=false; scene.add(p); return p;
 }
+/* street-lamp sprites fade out near the camera: up close the lamp heads and road pools carry the light,
+   so the 7 m glow sprites don't stack into a white wall at street level (orbit distances are unaffected) */
+const LAMP_NEAR_FADE=(sh)=>{
+  sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying float vNF;')
+    .replace('#include <fog_vertex>','#include <fog_vertex>\nvNF=smoothstep(45.0,240.0,-mvPosition.z);');
+  sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying float vNF;')
+    .replace('#include <alphatest_fragment>','diffuseColor.a*=vNF;\n#include <alphatest_fragment>');
+};
 const streetArr=[];
-AV.forEach(ax=>{ for(let z=-1450;z<1590;z+=18){ if(halfW(z)<Math.abs(ax)-4) continue; [-8.5,8.5].forEach(o=>{ const x=ax+o; if(!inLake(x,z,2)) streetArr.push(x,6,z); }); } });
+AV.forEach(ax=>{ for(let z=-1450;z<1590;z+=18){ if(halfW(z)<Math.abs(ax)-4) continue; [-8.5,8.5].forEach(o=>{ const x=ax+o; if(!inLake(x,z,2)&&!(Math.abs(x)<PARK.x1&&z>PARK.z0&&z<PARK.z1)) streetArr.push(x,6,z); }); } });
 for(let k=0;k<96;k+=3){ const zs=-1440+k*ST, hw=halfW(zs)-4; if(hw<20||(zs>PARK.z0&&zs<PARK.z1)) continue; for(let x=-hw;x<hw;x+=19) streetArr.push(x,6,zs+4.5); }
 const streetPts=makePoints(streetArr,0xbfeaff,7,2.8);
+streetPts.material.onBeforeCompile=LAMP_NEAR_FADE;
 const boroPts=makePoints(boroLights,0xb59cff,6,1.5);
 
 /* ---------- classic New York bridges with modern lighting ---------- */
@@ -1740,12 +1750,15 @@ function updateExtras(dt,t){
 }
 
 /* ---------- street props: lamp posts and blade signs ---------- */
+/* lamp heads and street-level neon sit just under the street-level bloom threshold (see moods), so they glow without blooming into blocks */
+const lampHeadMat=new THREE.MeshBasicMaterial({color:C(0xd8f2ff).multiplyScalar(1.05)});
+const streetNeonMat=new THREE.MeshBasicMaterial({color:C(0xffffff).multiplyScalar(0.62)});
 {
   const LP=[]; for(let i=0;i<streetArr.length;i+=3) LP.push({x:streetArr[i],z:streetArr[i+2]});
   const poleG=new THREE.CylinderGeometry(0.1,0.16,6,6); poleG.translate(0,3,0);
   instanced(poleG,darkMat,LP,(d,b)=>{d.position.set(b.x,0,b.z);},false,false);
   const headG=new THREE.BoxGeometry(0.5,0.18,0.9); headG.translate(0,6.1,0);
-  instanced(headG,new THREE.MeshBasicMaterial({color:C(0xd8f2ff).multiplyScalar(1.6)}),LP,(d,b)=>{d.position.set(b.x,0,b.z);},false,false);
+  instanced(headG,lampHeadMat,LP,(d,b)=>{d.position.set(b.x,0,b.z);},false,false);
   const SIGNS=[];
   B.forEach(b=>{ if(b.y0!==0||b.rot!==0||Math.abs(b.x)>330||b.h<16||rand()>0.45) return;
     const face=Math.floor(rand()*4), hgt=rr(3.5,8), y=rr(6,12), dep=rr(1.2,2.2); let x,z,w,d;
@@ -1753,7 +1766,7 @@ function updateExtras(dt,t){
     else { z=b.z+rr(-b.d*0.4,b.d*0.4); x=b.x+(face===2?1:-1)*(b.w/2+dep/2); w=dep; d=0.4; }
     SIGNS.push({x,z,y,w,d,h:hgt,c:pick(NEON).clone().multiplyScalar(rr(1.1,1.8))});
   });
-  instanced(boxBase,new THREE.MeshBasicMaterial({color:0xffffff}),SIGNS,(d,b)=>{d.position.set(b.x,b.y,b.z);d.scale.set(b.w,b.h,b.d);},false,false);
+  instanced(boxBase,streetNeonMat,SIGNS,(d,b)=>{d.position.set(b.x,b.y,b.z);d.scale.set(b.w,b.h,b.d);},false,false);
 }
 
 /* ---------- lamps on every cross street, and LED banners on modern facades ---------- */
@@ -1772,7 +1785,7 @@ const xLampArr=[];
   const poleG=new THREE.CylinderGeometry(0.1,0.16,6,6); poleG.translate(0,3,0);
   instanced(poleG,darkMat,LP,(d,b)=>{d.position.set(b.x,0,b.z);},false,false);
   const headG=new THREE.BoxGeometry(0.9,0.18,0.5); headG.translate(0,6.1,0);
-  instanced(headG,new THREE.MeshBasicMaterial({color:C(0xd8f2ff).multiplyScalar(1.6)}),LP,(d,b)=>{d.position.set(b.x,0,b.z);},false,false);
+  instanced(headG,lampHeadMat,LP,(d,b)=>{d.position.set(b.x,0,b.z);},false,false);
   const BAN=[];
   B.forEach(b=>{
     if(b.y0!==0||b.rot!==0||Math.abs(b.x)>330||b.h<14||b.style===0||rand()>0.35) return;
@@ -1781,9 +1794,10 @@ const xLampArr=[];
     else { z=b.z+rr(-b.d*0.35,b.d*0.35); x=b.x+(f===2?1:-1)*(b.w/2+0.06); w=0.1; d=bw; }
     BAN.push({x,z,y,w,h:bh,d,c:pick(NEON).clone().multiplyScalar(rr(0.9,1.5))});
   });
-  instanced(boxBase,new THREE.MeshBasicMaterial({color:0xffffff}),BAN,(d,b)=>{d.position.set(b.x,b.y,b.z);d.scale.set(b.w,b.h,b.d);},false,false);
+  instanced(boxBase,streetNeonMat,BAN,(d,b)=>{d.position.set(b.x,b.y,b.z);d.scale.set(b.w,b.h,b.d);},false,false);
 }
 const xLampPts=makePoints(xLampArr,0xbfeaff,7,2.8);
+xLampPts.material.onBeforeCompile=LAMP_NEAR_FADE;
 function updateLampsExtra(){ xLampPts.material.opacity=cur.lamp; }
 
 /* ---------- facade detail for street level ---------- */
@@ -2333,12 +2347,13 @@ function updateLiberty(t){
 }
 /* street lighting: pools of lamp light on roads and sidewalks */
 const GLOW_ISLAND=`{ vec3 lc=vec3(0.78,0.9,1.0);
+  float pf=smoothstep(60.0,600.0,length(vViewPosition)), pw=mix(0.16,1.0,pf);
   float ax=mod(vGW.x+337.5,75.0)-37.5, lz=mod(vGW.z+1459.0,18.0)-9.0, lx=abs(ax)-8.5;
-  float pool=exp(-(lx*lx+lz*lz)/90.0);
+  float pool=exp(-(lx*lx+lz*lz)/(90.0*pw));
   float sz=abs(mod(vGW.z+1456.0,32.0)-16.0)-4.3, sx=mod(vGW.x+9.5,19.0)-9.5;
-  float pool2=exp(-(sz*sz+sx*sx)/70.0);
+  float pool2=exp(-(sz*sz+sx*sx)/(70.0*pw));
   float isl=1.0-step(330.0,abs(vGW.x));
-  totalEmissiveRadiance+=lc*(pool*0.5+pool2*0.4+0.08)*uLamp*isl;
+  totalEmissiveRadiance+=lc*((pool*0.5+pool2*0.4)*mix(0.8,1.0,pf)+mix(0.012,0.08,pf))*uLamp*isl;
   totalEmissiveRadiance+=vec3(0.03,0.032,0.045)*uLamp*(1.0-isl); }`;
 const GLOW_BORO=`{ float bx=mod(vGW.x,40.0)-20.0, bz=mod(vGW.z,40.0)-20.0;
   float p=exp(-(bx*bx+bz*bz)/90.0);
@@ -2814,9 +2829,9 @@ composer.addPass(new THREE.ShaderPass(THREE.GammaCorrectionShader));
 
 /* ---------- moods ---------- */
 const RAW={
-  day:  {el:52,az:2.35,sunCol:0xfff4e6,sunI:2.1,hemiSky:0xc8e4f4,hemiGround:0x7a7482,hemiI:0.8,top:0x2f78d0,hor:0xd6eef4,bot:0x9aa9b5,fog:0xc6dde6,fogD:0.00015,night:0,exp:1.0,bloomS:0.22,bloomT:0.9,bloomR:0.45,sunGlow:0xfff3d6,sunSize:1,stars:0,lamp:0,aur:0},
-  dusk: {el:4,az:-1.95,sunCol:0xff8a7a,sunI:1.6,hemiSky:0xff9ab8,hemiGround:0x3a2d48,hemiI:0.6,top:0x1c1650,hor:0xff6a7a,bot:0x221828,fog:0x8a5f86,fogD:0.0002,night:0.8,exp:1.05,bloomS:0.75,bloomT:0.72,bloomR:0.55,sunGlow:0xff7a8a,sunSize:1,stars:0.25,lamp:0.85,aur:0.3},
-  night:{el:36,az:-0.8,sunCol:0xa8b0ff,sunI:0.2,hemiSky:0x3a2e6a,hemiGround:0x221c32,hemiI:0.3,top:0x030212,hor:0x2a1446,bot:0x07050c,fog:0x170f2c,fogD:0.00024,night:1,exp:1.2,bloomS:0.8,bloomT:0.68,bloomR:0.5,sunGlow:0xc8bcff,sunSize:0.25,stars:1,lamp:1,aur:1}
+  day:  {el:52,az:2.35,sunCol:0xfff4e6,sunI:2.1,hemiSky:0xc8e4f4,hemiGround:0x7a7482,hemiI:0.8,top:0x2f78d0,hor:0xd6eef4,bot:0x9aa9b5,fog:0xc6dde6,fogD:0.00015,night:0,exp:1.0,bloomS:0.22,bloomT:0.9,bloomR:0.45,stS:0.18,stT:0.94,stE:1.0,sunGlow:0xfff3d6,sunSize:1,stars:0,lamp:0,aur:0},
+  dusk: {el:4,az:-1.95,sunCol:0xff8a7a,sunI:1.6,hemiSky:0xff9ab8,hemiGround:0x3a2d48,hemiI:0.6,top:0x1c1650,hor:0xff6a7a,bot:0x221828,fog:0x8a5f86,fogD:0.0002,night:0.8,exp:1.05,bloomS:0.75,bloomT:0.72,bloomR:0.55,stS:0.45,stT:0.86,stE:0.95,sunGlow:0xff7a8a,sunSize:1,stars:0.25,lamp:0.85,aur:0.3},
+  night:{el:36,az:-0.8,sunCol:0xa8b0ff,sunI:0.2,hemiSky:0x3a2e6a,hemiGround:0x221c32,hemiI:0.3,top:0x030212,hor:0x2a1446,bot:0x07050c,fog:0x170f2c,fogD:0.00024,night:1,exp:1.2,bloomS:0.8,bloomT:0.68,bloomR:0.5,stS:0.5,stT:0.86,stE:1.0,sunGlow:0xc8bcff,sunSize:0.25,stars:1,lamp:1,aur:1}
 };
 const P={}; const COLS=['sunCol','hemiSky','hemiGround','top','hor','bot','fog','sunGlow'];
 for(const k in RAW){ P[k]={}; for(const f in RAW[k]) P[k][f]=COLS.includes(f)?C(RAW[k][f]):RAW[k][f]; }
@@ -2832,8 +2847,11 @@ function apply(){
   skyU.top.value.copy(cur.top); skyU.fogC.value.copy(cur.fog); skyU.horizon.value.copy(cur.hor); skyU.bottom.value.copy(cur.bot);
   skyU.sunDir.value.copy(sunDir); skyU.sunColor.value.copy(cur.sunGlow); skyU.sunSize.value=cur.sunSize; skyU.stars.value=cur.stars; skyU.aurora.value=cur.aur;
   scene.fog.color.copy(cur.fog); scene.fog.density=cur.fogD;
-  uNight.value=cur.night; renderer.toneMappingExposure=cur.exp;
-  bloom.strength=cur.bloomS; bloom.threshold=cur.bloomT; bloom.radius=cur.bloomR;
+  /* street-level adaptation: below ~320 m the camera is among lit facades, lamps and signs that fill the frame,
+     so exposure and bloom ease to the st* values (threshold up, strength and radius down); orbit heights use the mood values */
+  const low=1-THREE.MathUtils.smoothstep(camera.position.y,50,320), L=THREE.MathUtils.lerp;
+  uNight.value=cur.night; renderer.toneMappingExposure=L(cur.exp,cur.stE,low);
+  bloom.strength=L(cur.bloomS,cur.stS,low); bloom.threshold=L(cur.bloomT,cur.stT,low); bloom.radius=cur.bloomR*(1-0.5*low);
   streetPts.material.opacity=cur.lamp; boroPts.material.opacity=cur.lamp*0.8; neckPts.material.opacity=Math.max(cur.lamp,0.2);
   headPts.material.opacity=Math.max(cur.lamp,0.15); tailPts.material.opacity=Math.max(cur.lamp,0.2);
   flyHead.material.opacity=Math.max(cur.lamp,0.35); flyTail.material.opacity=Math.max(cur.lamp,0.35);
