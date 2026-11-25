@@ -13,3 +13,9 @@ To resume, restart each ticket's agent with its original brief, and hand it the 
 
 ## 2026-11-25: container restart
 | M-007 Street glare | `M-007-street-glare.patch` | Four WIP checkpoints (glare, lamp pools, darker asphalt, no avenue lamps in Central Park), all unverified. The dev was restarted from them. |
+
+## 2026-11-25: paused again until credits refresh
+| Ticket | Patch | State when stopped |
+|---|---|---|
+| M-007 Street glare | `M-007-street-glare.patch` (replaces the earlier one; against `33f178a`) | Earlier checkpoints applied, plus dimmer road pools and shopfronts near the camera. Was taking the baseline shot; unverified. |
+| M-021 Central Park from reference photos | `M-021-central-park-refs.patch` (against `33f178a`) | Early uncommitted edits to the park section; unverified. The reference photos are not in the repo; ask the owner to re-share them if the scratchpad copies are gone. |

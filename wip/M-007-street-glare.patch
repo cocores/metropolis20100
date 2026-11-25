@@ -1,8 +1,8 @@
 diff --git a/index.html b/index.html
-index 64f3c98..2f6feba 100644
+index a94f6ee..10d9441 100644
 --- a/index.html
 +++ b/index.html
-@@ -461,6 +461,7 @@ cityMat.onBeforeCompile=(sh)=>{
+@@ -507,6 +507,7 @@ cityMat.onBeforeCompile=(sh)=>{
      .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor,0.06,cWin);')
      .replace('#include <metalnessmap_fragment>','#include <metalnessmap_fragment>\nmetalnessFactor=mix(metalnessFactor,0.8,cWin);')
      .replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
@@ -10,14 +10,15 @@ index 64f3c98..2f6feba 100644
        float cKey=mix(cR2,fract(cTs*7.31),cMo);
        vec3 cLed=mix(vec3(0.72,0.88,1.0),vec3(1.0,0.82,0.6),step(0.62,cKey));
        cLed=mix(cLed,vNeon,0.35*cMo*step(0.8,cKey));
-@@ -470,26 +471,26 @@ cityMat.onBeforeCompile=(sh)=>{
+@@ -516,26 +517,26 @@ cityMat.onBeforeCompile=(sh)=>{
        float cInt=mix(0.55+0.7*cF.y,0.9,cAy);
        float cBlind=mix(mix(1.0,0.55+0.45*step(0.45,fract(cF.y*7.0)),step(0.2,cR2)*step(cR2,0.36)),1.0,cAx);
        float cSil=mix(1.0-0.85*step(cR2,0.07)*step(abs(cF.x-0.5-0.15*sin(cR*40.0)),0.11)*step(cF.y,0.62),1.0,cAx);
 -      totalEmissiveRadiance+=cWin*cLit*cDim*uNight*cLed*1.05*cInt*cBlind*cSil;
 +      totalEmissiveRadiance+=cWin*cLit*cDim*uNight*cLed*1.05*cInt*cBlind*cSil*mix(0.62,1.0,cPx);
        vec3 cShopC=clamp(abs(mod(cShopR*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);
-       totalEmissiveRadiance+=cShop*cMull*(0.35+uNight)*mix(vec3(1.0,0.85,0.65),vec3(0.75,0.9,1.0),step(0.5,cShopR))*1.3;
+-      totalEmissiveRadiance+=cShop*cMull*(0.35+uNight)*mix(vec3(1.0,0.85,0.65),vec3(0.75,0.9,1.0),step(0.5,cShopR))*1.3;
++      totalEmissiveRadiance+=cShop*cMull*(0.35+uNight)*mix(vec3(1.0,0.85,0.65),vec3(0.75,0.9,1.0),step(0.5,cShopR))*1.3*mix(0.3,1.0,cPx);
        totalEmissiveRadiance+=cSign*step(0.25,cShopR)*cShopC*(0.8+2.4*uNight);
 -      totalEmissiveRadiance+=diffuseColor.rgb*(1.0-cRoof)*(1.0-smoothstep(3.0,26.0,vWPos.y))*uNight*0.75;
 +      totalEmissiveRadiance+=diffuseColor.rgb*(1.0-cRoof)*(1.0-smoothstep(3.0,26.0,vWPos.y))*uNight*mix(0.18,0.75,cPx);
@@ -42,7 +43,7 @@ index 64f3c98..2f6feba 100644
  };
  
  const waterMat=new THREE.MeshStandardMaterial({color:C(0x0a1a2a),roughness:0.12,metalness:0.0,envMapIntensity:1.4});
-@@ -711,10 +712,19 @@ function makePoints(arr,color,size,mult){
+@@ -1110,10 +1111,19 @@ function makePoints(arr,color,size,mult){
    const m=new THREE.PointsMaterial({size,map:glow,color:C(color).multiplyScalar(mult),transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,sizeAttenuation:true});
    const p=new THREE.Points(g,m); p.frustumCulled=false; scene.add(p); return p;
  }
@@ -63,7 +64,7 @@ index 64f3c98..2f6feba 100644
  const boroPts=makePoints(boroLights,0xb59cff,6,1.5);
  
  /* ---------- classic New York bridges with modern lighting ---------- */
-@@ -1169,12 +1179,15 @@ function updateExtras(dt,t){
+@@ -1740,12 +1750,15 @@ function updateExtras(dt,t){
  }
  
  /* ---------- street props: lamp posts and blade signs ---------- */
@@ -80,7 +81,7 @@ index 64f3c98..2f6feba 100644
    const SIGNS=[];
    B.forEach(b=>{ if(b.y0!==0||b.rot!==0||Math.abs(b.x)>330||b.h<16||rand()>0.45) return;
      const face=Math.floor(rand()*4), hgt=rr(3.5,8), y=rr(6,12), dep=rr(1.2,2.2); let x,z,w,d;
-@@ -1182,7 +1195,7 @@ function updateExtras(dt,t){
+@@ -1753,7 +1766,7 @@ function updateExtras(dt,t){
      else { z=b.z+rr(-b.d*0.4,b.d*0.4); x=b.x+(face===2?1:-1)*(b.w/2+dep/2); w=dep; d=0.4; }
      SIGNS.push({x,z,y,w,d,h:hgt,c:pick(NEON).clone().multiplyScalar(rr(1.1,1.8))});
    });
@@ -89,7 +90,7 @@ index 64f3c98..2f6feba 100644
  }
  
  /* ---------- lamps on every cross street, and LED banners on modern facades ---------- */
-@@ -1201,7 +1214,7 @@ const xLampArr=[];
+@@ -1772,7 +1785,7 @@ const xLampArr=[];
    const poleG=new THREE.CylinderGeometry(0.1,0.16,6,6); poleG.translate(0,3,0);
    instanced(poleG,darkMat,LP,(d,b)=>{d.position.set(b.x,0,b.z);},false,false);
    const headG=new THREE.BoxGeometry(0.9,0.18,0.5); headG.translate(0,6.1,0);
@@ -98,7 +99,7 @@ index 64f3c98..2f6feba 100644
    const BAN=[];
    B.forEach(b=>{
      if(b.y0!==0||b.rot!==0||Math.abs(b.x)>330||b.h<14||b.style===0||rand()>0.35) return;
-@@ -1210,9 +1223,10 @@ const xLampArr=[];
+@@ -1781,9 +1794,10 @@ const xLampArr=[];
      else { z=b.z+rr(-b.d*0.35,b.d*0.35); x=b.x+(f===2?1:-1)*(b.w/2+0.06); w=0.1; d=bw; }
      BAN.push({x,z,y,w,h:bh,d,c:pick(NEON).clone().multiplyScalar(rr(0.9,1.5))});
    });
@@ -110,7 +111,7 @@ index 64f3c98..2f6feba 100644
  function updateLampsExtra(){ xLampPts.material.opacity=cur.lamp; }
  
  /* ---------- facade detail for street level ---------- */
-@@ -1761,12 +1775,13 @@ function updateLiberty(t){
+@@ -2333,12 +2347,13 @@ function updateLiberty(t){
  }
  /* street lighting: pools of lamp light on roads and sidewalks */
  const GLOW_ISLAND=`{ vec3 lc=vec3(0.78,0.9,1.0);
@@ -123,11 +124,11 @@ index 64f3c98..2f6feba 100644
 +  float pool2=exp(-(sz*sz+sx*sx)/(70.0*pw));
    float isl=1.0-step(330.0,abs(vGW.x));
 -  totalEmissiveRadiance+=lc*(pool*0.5+pool2*0.4+0.08)*uLamp*isl;
-+  totalEmissiveRadiance+=lc*(pool*0.5+pool2*0.4+mix(0.012,0.08,pf))*uLamp*isl;
++  totalEmissiveRadiance+=lc*((pool*0.5+pool2*0.4)*mix(0.6,1.0,pf)+mix(0.012,0.08,pf))*uLamp*isl;
    totalEmissiveRadiance+=vec3(0.03,0.032,0.045)*uLamp*(1.0-isl); }`;
  const GLOW_BORO=`{ float bx=mod(vGW.x,40.0)-20.0, bz=mod(vGW.z,40.0)-20.0;
    float p=exp(-(bx*bx+bz*bz)/90.0);
-@@ -2212,9 +2227,9 @@ composer.addPass(new THREE.ShaderPass(THREE.GammaCorrectionShader));
+@@ -2814,9 +2829,9 @@ composer.addPass(new THREE.ShaderPass(THREE.GammaCorrectionShader));
  
  /* ---------- moods ---------- */
  const RAW={
@@ -140,7 +141,7 @@ index 64f3c98..2f6feba 100644
  };
  const P={}; const COLS=['sunCol','hemiSky','hemiGround','top','hor','bot','fog','sunGlow'];
  for(const k in RAW){ P[k]={}; for(const f in RAW[k]) P[k][f]=COLS.includes(f)?C(RAW[k][f]):RAW[k][f]; }
-@@ -2230,8 +2245,11 @@ function apply(){
+@@ -2832,8 +2847,11 @@ function apply(){
    skyU.top.value.copy(cur.top); skyU.fogC.value.copy(cur.fog); skyU.horizon.value.copy(cur.hor); skyU.bottom.value.copy(cur.bot);
    skyU.sunDir.value.copy(sunDir); skyU.sunColor.value.copy(cur.sunGlow); skyU.sunSize.value=cur.sunSize; skyU.stars.value=cur.stars; skyU.aurora.value=cur.aur;
    scene.fog.color.copy(cur.fog); scene.fog.density=cur.fogD;
