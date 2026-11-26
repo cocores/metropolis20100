@@ -1,8 +1,8 @@
 diff --git a/index.html b/index.html
-index 04b4fdb..e991fb1 100644
+index 1a536da..391ae67 100644
 --- a/index.html
 +++ b/index.html
-@@ -821,7 +821,35 @@ ppath('foot',3.2,ellPts(4,772,61,37,40),true); // Great Lawn loop
+@@ -870,7 +870,35 @@ ppath('foot',3.2,ellPts(4,772,61,37,40),true); // Great Lawn loop
  ppath('foot',3,polyOff(WAT.meer.P,4),true,true);
  const PLAKE=ppath('lake',3.2,polyOff(WAT.lake.P,5),true,true);
  const PTRACK=ppath('track',3.4,polyOff(WAT.resv.P,4.5),true,true);
@@ -39,7 +39,7 @@ index 04b4fdb..e991fb1 100644
  const GPATHS=PPATHS.filter(p=>p.ground);
  function pathDist(x,z,ex){ let best=1e9;
    for(const p of GPATHS){ if(p===ex) continue; const hw=p.w/2;
-@@ -913,6 +941,19 @@ const TRUNK=[]; // park trunks and elm limbs: {a:[x,y,z], b:[x,y,z], r}
+@@ -962,6 +990,19 @@ const TRUNK=[]; // park trunks and elm limbs: {a:[x,y,z], b:[x,y,z], r}
      TRUNK.push({a:[bx,PG-0.2,bz],b:[fx,fy,fz],r:0.36});
      const [ax,az]=mallAt(uu,s*(v-inw-1.4)), [qx,qz]=mallAt(uu,s*(v+1.3));
      TRUNK.push({a:[fx,fy-0.3,fz],b:[ax,PG+tk+1.0,az],r:0.2},{a:[fx,fy-0.3,fz],b:[qx,PG+tk+1.2,qz],r:0.18}); }));
@@ -59,7 +59,7 @@ index 04b4fdb..e991fb1 100644
    const treeMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1});
    treeMat.onBeforeCompile=sh=>{ // park canopies (not roof gardens) pick up a faint bioluminescent green at night
      sh.uniforms.uPG=uPG;
-@@ -956,19 +997,17 @@ const gBox=NI(new THREE.BoxGeometry(1,1,1)), gCyl=NI(new THREE.CylinderGeometry(
+@@ -1005,19 +1046,17 @@ const gBox=NI(new THREE.BoxGeometry(1,1,1)), gCyl=NI(new THREE.CylinderGeometry(
    gWheel=NI(new THREE.TorusGeometry(1,0.07,4,18));
  const PLP=[], PLC=[]; // park glow points (lamps, water edges; drone beacons and boat lanterns are appended at the end and move)
  function pPt(x,y,z,col){ PLP.push(x,y,z); PLC.push(col.r,col.g,col.b); }
@@ -81,7 +81,7 @@ index 04b4fdb..e991fb1 100644
    // ball fields: orange-tan clay infields with a grass diamond, bases and a backstop (Heckscher, Great Lawn, North Meadow)
    PKF.fields.forEach(f=>{ const at=(a,b)=>[f.x+f.u[0]*a+f.v[0]*b,f.z+f.u[1]*a+f.v[1]*b], arc=[[f.x,f.z]], d=f.r*0.55;
      for(let k=0;k<=12;k++){ const t=-Math.PI/4+k/12*Math.PI/2; arc.push(at(Math.cos(t)*f.r,Math.sin(t)*f.r)); }
-@@ -1102,6 +1141,81 @@ const GD=pBuf(), SD=pBuf();
+@@ -1151,6 +1190,81 @@ const GD=pBuf(), SD=pBuf();
      pAdd(SD,gHip,-114,PG+4.9,566,6.4,2.6,10.6,K(0x59606a),0);
      for(let k=0;k<4;k++) pAdd(SD,gBox,-109.95,PG+1.8,560.5+k*3.6,0.1,1.4,1.1,K(0xffd9a0),1.2);
      pAdd(SD,gBox,-114,PG+6.6,566,0.9,1.4,0.9,K(0xe8e2d6),0.02); }
@@ -163,7 +163,7 @@ index 04b4fdb..e991fb1 100644
    // picnic blankets on Sheep Meadow, rocks
    PKF.blankets=[];
    for(let i=0;i<300&&PKF.blankets.length<(isMobile?10:20);i++){
-@@ -1114,6 +1228,34 @@ const GD=pBuf(), SD=pBuf();
+@@ -1163,6 +1277,34 @@ const GD=pBuf(), SD=pBuf();
  const parkGround=new THREE.Mesh(pGeo(GD),parkStd({roughness:1,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-4}));
  parkGround.receiveShadow=true; scene.add(parkGround);
  const parkStatic=new THREE.Mesh(pGeo(SD),parkStd({roughness:0.75})); parkStatic.castShadow=true; parkStatic.receiveShadow=true; scene.add(parkStatic);
@@ -198,18 +198,26 @@ index 04b4fdb..e991fb1 100644
  // carousel (turns) and the floating garden pavilion over the Reservoir (bobs)
  const carousel=(()=>{ const D=pBuf(), K=h=>C(h);
    pAdd(D,gCyl16,0,0.3,0,8,0.6,8.3,K(0xe9e1d0),0.05); pAdd(D,gCyl16,0,2.6,0,1.2,4.0,1.2,K(0xd8b25a),0.6);
-@@ -1151,7 +1293,9 @@ const PSIT=[]; // seated/standing people that don't travel
+@@ -1189,6 +1331,7 @@ const MOB=isMobile?0.5:1, NQ=n=>Math.max(1,Math.round(n*MOB));
+ const PA=[]; // agents moving along PPATHS
+ let nPer=0, nRob=0, nBike=0, nDog=0;
+ const PSIT=[]; // seated/standing people that don't travel
++const PGONE=[]; // M-027: retired rink-skater slots in pBodyM, zero-scaled below (an untouched instance would draw at the origin)
+ {
+   const foot=GPATHS.filter(p=>p.kind==='foot'||p.kind==='mall'||p.kind==='lake'), fLen=foot.reduce((a,p)=>a+p.len,0);
+   const onPath=(p,mode,sp,o)=>{ const a=Object.assign({pa:p,s:prand()*p.len,dir:prand()<0.5?1:-1,sp,lat:prr(-p.w*0.38,p.w*0.38),mode,ph:prand()*6.28,sc:prr(0.9,1.08),k:0},o); PA.push(a); return a; };
+@@ -1200,7 +1343,9 @@ const PSIT=[]; // seated/standing people that don't travel
    for(let i=0;i<NQ(6);i++) onPath(PDRIVE,1,prr(2.8,3.6),{pi:nPer++,lat:prr(2.6,3.4)*(i%2?1:-1)});
    for(let i=0;i<NQ(16);i++) onPath(PDRIVE,2,prr(5,8),{pi:nPer++,bi:nBike++,lat:prr(0.6,2.4)*(i%2?1:-1)});
    for(let i=0;i<NQ(6);i++) onPath(PDRIVE,7,prr(1.2,1.8),{ri:nRob++,lat:prr(2.6,3.4)*(i%2?1:-1)});
 -  for(let i=0;i<NQ(14);i++) onPath(PRINK,5,prr(2.2,3.4),{pi:nPer++,dir:1,lat:prr(-3,3)});
 +  // the 14 old rink skaters: same prand() draws (7 each) and person slots as before, so every later park pick is unchanged; their
 +  // slots stay empty (zero matrices) and the rink people below (M-027) take over the ice
-+  for(let i=0;i<NQ(14);i++){ for(let k=0;k<7;k++) prand(); nPer++; }
++  for(let i=0;i<NQ(14);i++){ for(let k=0;k<7;k++) prand(); PGONE.push(nPer++); }
    // picnickers on the blankets, bench sitters on the Mall, ball players, people around and on the Bethesda pool curb
    PKF.blankets.forEach(b=>{ const n=1+Math.floor(prand()*3); for(let k=0;k<n;k++){ const a=b.r+k*2.1+prr(-0.3,0.3); PSIT.push({pi:nPer++,mode:3,x:b.x+Math.cos(a)*0.8,z:b.z+Math.sin(a)*0.8,y:PG+0.1,yaw:Math.atan2(-Math.cos(a),-Math.sin(a)),ph:prand()*6.28}); } });
    for(let i=0;i<NQ(16);i++){ const s=i%2?1:-1, [x,z]=mallAt(2+3*Math.floor(prand()*30)+prr(-0.8,0.8),s*5.6); PSIT.push({pi:nPer++,mode:3,x,z,y:PG+0.5,yaw:Math.atan2(-s*MALL.dz,s*MALL.dx),ph:prand()*6.28}); }
-@@ -1183,14 +1327,18 @@ const PCAR=[];
+@@ -1232,14 +1377,18 @@ const PCAR=[];
     torso, neck, head, two-segment arms and legs, hands, shoes), posed on the GPU from per-instance attributes, so the CPU only
     writes one root matrix per person. aRig = (bone, colour slot, variant mask).
     bones: 0 torso (twist blends pelvis->chest), 1 head, 2 thigh, 3 shin, 4 foot, 5 upper arm, 6 forearm+hand, 7 coat hem/skirt
@@ -232,7 +240,7 @@ index 04b4fdb..e991fb1 100644
    const add=(g,bone,slot,mask,x,y,z,sx,sy,sz,rx,ry,rz)=>{ o.position.set(x,y,z); o.rotation.set(rx||0,ry||0,rz||0); o.scale.set(sx,sy,sz); o.updateMatrix();
      g.applyMatrix4(o.matrix); const b=P.length/3, p=g.attributes.position.array, n=g.attributes.normal.array;
      for(let i=0;i<p.length;i++){ P.push(p[i]); Nn.push(n[i]); } for(let i=0;i<p.length/3;i++) R.push(bone,slot,mask);
-@@ -1228,6 +1376,8 @@ const FIG_G=(()=>{ const lo=isMobile, P=[], Nn=[], R=[], I=[], o=new THREE.Objec
+@@ -1277,6 +1426,8 @@ const FIG_G=(()=>{ const lo=isMobile, P=[], Nn=[], R=[], I=[], o=new THREE.Objec
      add(Cy(0.084,0.058,0.53,ls),2,7,0,s*0.095,0.725,0,1,1,1);
      add(Cy(0.057,0.038,0.47,ls),3,10,0,s*0.095,0.285,0,1,1,1);
      add(Sp(lo?4:5,3),4,4,0,s*0.095,0.045,0.04,0.05,0.05,0.128);
@@ -241,7 +249,7 @@ index 04b4fdb..e991fb1 100644
    });
    // coat hem and skirt (follow the mean hip angle), shoulder bag + strap, backpack, glow belt
    add(Cy(0.168,0.2,0.43,ts),7,0,2000+2,0,0.8,0,1,1,0.72);
-@@ -1237,57 +1387,101 @@ const FIG_G=(()=>{ const lo=isMobile, P=[], Nn=[], R=[], I=[], o=new THREE.Objec
+@@ -1286,57 +1437,101 @@ const FIG_G=(()=>{ const lo=isMobile, P=[], Nn=[], R=[], I=[], o=new THREE.Objec
    add(new THREE.BoxGeometry(0.27,0.36,0.13),0,5,3001,0,1.24,-0.178,1,1,1);
    add(Cy(0.15,0.15,0.024,ts),0,6,3002,0,1.075,0.004,1,1,0.69);
    const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(P,3)); g.setAttribute('normal',new THREE.Float32BufferAttribute(Nn,3));
@@ -356,7 +364,7 @@ index 04b4fdb..e991fb1 100644
    float mk=aRig.z, g=floor(mk*0.001+0.0001), bits=mk-g*1000.;
    if(g>0.5){ float vis=g<2.5?mod(floor(bits/exp2(g<1.5?iStyle.x:iStyle.y)+0.001),2.):mod(floor(iStyle.z/exp2(bits)+0.001),2.); if(vis<0.5) p=vec3(0.); }
  }
-@@ -1299,7 +1493,7 @@ figMat.onBeforeCompile=sh=>{ sh.uniforms.uT=uTime; sh.uniforms.uNight=uNight;
+@@ -1348,7 +1543,7 @@ figMat.onBeforeCompile=sh=>{ sh.uniforms.uT=uTime; sh.uniforms.uNight=uNight;
      vec3 under=mix(iSkin,vec3(0.035,0.035,0.04),step(0.45,fract(ph*1.7))), shoe=mix(vec3(0.045,0.045,0.05),vec3(0.78,0.78,0.76),step(0.72,fract(ph*2.3)));
      if(sl>0.5&&sl<1.5) cl=iSkin; else if(sl>1.5&&sl<2.5) cl=(iStyle.x>3.5&&iStyle.x!=5.)?iAcc:iHair; else if(sl>2.5&&sl<3.5) cl=iBot;
      else if(sl>3.5&&sl<4.5) cl=shoe; else if(sl>4.5&&sl<6.5) cl=iAcc; else if(sl>6.5&&sl<7.5) cl=dr?under:iBot; else if(sl>7.5&&sl<8.5) cl=dr?top:iBot;
@@ -365,7 +373,7 @@ index 04b4fdb..e991fb1 100644
      vColor.xyz=cl; vTrim=step(5.5,sl)*step(sl,6.5); }`)
      .replace('#include <beginnormal_vertex>','vec3 objectNormal, hPos; figSkin(hPos,objectNormal);')
      .replace('#include <begin_vertex>','vec3 transformed=hPos;');
-@@ -1319,8 +1513,8 @@ function figLook(seed,f){ const H=k=>figHash(seed,k), r=H(1);
+@@ -1368,8 +1563,8 @@ function figLook(seed,f){ const H=k=>figHash(seed,k), r=H(1);
    const bw=fem?-0.3-0.5*H(6):-0.3+1.2*H(6), hq=H(8), hair=FIG_HAIR[Math.floor(hq*(hq<0.9?9:12))];
    const acc=trim?FIG_NEON[Math.floor(H(9)*4)]:FIG_ACC[Math.floor(H(9)*FIG_ACC.length)];
    return {top:of===1&&!f.keepTop?FIG_COAT[Math.floor(H(10)*FIG_COAT.length)]:f.top,bot:f.bot,skin:f.skin,hair,acc:f.acc||acc,hs:f.hs!==undefined?f.hs:hs,of,ac:f.acc?0:ac,bw,mode:f.mode,rate:f.rate,ph:f.ph,v:H(7)}; }
@@ -376,10 +384,11 @@ index 04b4fdb..e991fb1 100644
    const A={iStyle:4,iAnim:4,iSkin:3,iHair:3,iBot:3,iAcc:3}, B={}; for(const k in A){ B[k]=new Float32Array(N*A[k]); g.setAttribute(k,new THREE.InstancedBufferAttribute(B[k],A[k])); }
    const m=new THREE.InstancedMesh(g,figMat,N); m.count=n; m.frustumCulled=false; m.name=name; m.setColorAt(0,C(0xffffff));
    for(let i=0;i<n;i++){ const f=look(i); m.setColorAt(i,f.top); B.iStyle.set([f.hs,f.of,f.ac,f.bw],i*4); B.iAnim.set([f.mode,f.rate,f.ph,f.v],i*4);
-@@ -1413,6 +1607,54 @@ function pSample(a){ const P=a.pa, L=P.L; let i=a.k; while(i<L.length-2&&L[i+1]<
+@@ -1462,6 +1657,55 @@ function pSample(a){ const P=a.pa, L=P.L; let i=a.k; while(i<L.length-2&&L[i+1]<
    const dx=P.x[i+1]-P.x[i], dz=P.z[i+1]-P.z[i], dl=Math.hypot(dx,dz)||1, f=(a.s-L[i])/dl;
    SPo.x=P.x[i]+dx*f+dz/dl*a.lat; SPo.z=P.z[i]+dz*f-dx/dl*a.lat; SPo.y=P.y[i]+(P.y[i+1]-P.y[i])*f; SPo.yaw=Math.atan2(dx*a.dir,dz*a.dir); }
  PSIT.forEach(p=>pm(pBodyM.instanceMatrix.array,p.pi,p.x,p.y,p.z,p.yaw,0,1,1,1));
++PGONE.forEach(i=>pBodyM.instanceMatrix.array.fill(0,i*16,i*16+16));
 +/* M-027 rink people: their own figure mesh with skates (one draw). Everyone skates counter-clockwise (left turns) in lanes inset from the
 +   boards, so nobody collides: lane-mates share one mean speed and are spaced evenly; speed surges on each push and fades in the glide;
 +   skaters bank into the turns (roll in the instance matrix; the shader reads it for crossovers). Lane 0: beginners holding the wall
@@ -431,7 +440,7 @@ index 04b4fdb..e991fb1 100644
  let parkAcc=0;
  function updatePark(dt,t,frame){
    const L=cur.lamp; uPG.value=0.05+1.05*L; parkGrassMat.emissiveIntensity=0.7*L; parkPts.material.opacity=0.1+0.9*L;
-@@ -1446,6 +1688,7 @@ function updatePark(dt,t,frame){
+@@ -1495,6 +1739,7 @@ function updatePark(dt,t,frame){
      pm(wA,i,x*S,y*S,z*S,Math.atan2(d.dx,d.dz),0.08,1,1,1); const o=(PDL0+i)*3, on=Math.sin(t*5+d.ph)>0.3;
      pa[o]=x; pa[o+1]=on?y-0.6:-500; pa[o+2]=z; });
    parkPts.geometry.attributes.position.needsUpdate=true;
