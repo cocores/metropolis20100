@@ -259,7 +259,13 @@ Notes: the mobile tier still renders shadows (2048², 137 casters) and ~3.7 M tr
 ## Sprint 3a: Police patrol game (owner request, 2026-11-25)
 The owner wants a game with an objective: you are a police officer hunting rogue AI robots among good ones, on foot or by car, and riding the maglev between stations to search them. It replaces the old Hunt shooter. The owner asked for it to be visible: a "Patrol" button in the dock, and `#hunt` still deep-links into it.
 
-**M-024 Police patrol** (gameplay-dev) 🔶 in-progress. Police livery and light bar on the car. Get out and walk, with a third-person camera, collisions and touch controls. Good and rogue AI robots, told apart by subtle tells. Scan, then detain. Detaining a good robot costs points. Cases per district, plus an intro card. Region: the hunt section, drive get-out/get-in, and the hunt HUD.
+**M-024 Police patrol** (gameplay-dev) ✅ done 2026-11-26. The Patrol dock button and `#hunt` both start it. Includes an intro card, the 2140 PD livery and light bar, get out/in and on-foot walking or running, good and rogue robots, scan and detain, reputation, cases and a radar. Draw calls with patrol off: -1. The foot API for M-026 is `foot`, `placeOfficer`, `groundAt` and `WALK_SURFACES`. Follow-ups:
+- No line-of-sight test on targeting.
+- Rogues sometimes spawn short of the case count.
+- F means "down" in the car.
+- The camera crowds the officer near walls.
+- The intro card's controls line has low contrast (M-008).
+- The drone keeps the old bright red. Police livery and light bar on the car. Get out and walk, with a third-person camera, collisions and touch controls. Good and rogue AI robots, told apart by subtle tells. Scan, then detain. Detaining a good robot costs points. Cases per district, plus an intro card. Region: the hunt section, drive get-out/get-in, and the hunt HUD.
 
 **M-025 Maglev stations** (render-dev) ✅ done 2026-11-26. 8 stations: Hudson Yards, Westside Arc, Northpoint, Harlem Meer, Park East, Midtown Spire, Seaport and Battery Terminal. Trains brake and dwell for 8 s with their doors lit. Draw calls +6 on desktop and +5 on phone. Nits: stations are hard to spot from the default orbit, and doors face inland, so from the water you see the closed side. 6–8 stations with elevated platforms, canopies, name signs, and elevators or stairs down to a street plaza. Trains stop and dwell with their doors lit. Exports `STATIONS`, `stationGroundAt`, `trainState` and `trainCarPose`. Region: the maglev section and `updateTrains`.
 
