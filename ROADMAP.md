@@ -261,7 +261,7 @@ The owner wants a game with an objective: you are a police officer hunting rogue
 
 **M-024 Police patrol** (gameplay-dev) 🔶 in-progress. Police livery and light bar on the car. Get out and walk, with a third-person camera, collisions and touch controls. Good and rogue AI robots, told apart by subtle tells. Scan, then detain. Detaining a good robot costs points. Cases per district, plus an intro card. Region: the hunt section, drive get-out/get-in, and the hunt HUD.
 
-**M-025 Maglev stations** (render-dev) 🔶 in-progress. 6–8 stations with elevated platforms, canopies, name signs, and elevators or stairs down to a street plaza. Trains stop and dwell with their doors lit. Exports `STATIONS`, `stationGroundAt`, `trainState` and `trainCarPose`. Region: the maglev section and `updateTrains`.
+**M-025 Maglev stations** (render-dev) ✅ done 2026-11-26. 8 stations: Hudson Yards, Westside Arc, Northpoint, Harlem Meer, Park East, Midtown Spire, Seaport and Battery Terminal. Trains brake and dwell for 8 s with their doors lit. Draw calls +6 on desktop and +5 on phone. Nits: stations are hard to spot from the default orbit, and doors face inland, so from the water you see the closed side. 6–8 stations with elevated platforms, canopies, name signs, and elevators or stairs down to a street plaza. Trains stop and dwell with their doors lit. Exports `STATIONS`, `stationGroundAt`, `trainState` and `trainCarPose`. Region: the maglev section and `updateTrains`.
 
 **M-026 Ride the train** (gameplay-dev) ⏳ after M-024 and M-025 merge. The officer takes the elevator up to a platform, boards a dwelling train, rides it with an in-car or outside camera, and gets off at any station. Rogue robots hide at stations and on trains.
 
