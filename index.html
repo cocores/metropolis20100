@@ -207,6 +207,14 @@ body.hunting.mousectl:not(.onfoot) .copbtns{right:100px;}
 .copbtns button:focus-visible{outline:2px solid var(--glow);outline-offset:2px;}
 #carBtn{border-color:#7fb4ff;} #scanBtn{border-color:#22e6ff;} #scanBtn.on{background:rgba(34,230,255,.55);} #detainBtn{border-color:#ff5a72;background:rgba(214,36,66,.88);color:#fff;}
 .copbtns button.dim{opacity:.5;}
+#actBtn{border-color:#3dffb0;background:rgba(18,120,84,.9);color:#fff;} #actBtn[hidden]{display:none;}
+#rideHud{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 84px);max-width:calc(100% - 24px);box-sizing:border-box;padding:8px 16px;border-radius:14px;
+  background:rgba(8,12,26,.84);border:1px solid rgba(34,230,255,.5);color:#fff;text-align:center;pointer-events:none;white-space:nowrap;}
+#rideHud[hidden]{display:none;} #rideHud b{display:block;font-family:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;font-weight:800;font-size:22px;line-height:1.1;} #rideHud span{display:block;font-size:13px;color:var(--muted);}
+#fadeFx{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .4s;} #fadeFx.on{opacity:1;}
+body.riding #cross{opacity:.6;}
+@media (max-width:700px){ #rideHud{top:calc(env(safe-area-inset-top,0px) + 232px);white-space:normal;padding:6px 12px;} #rideHud b{font-size:19px;} #rideHud span{font-size:12px;}
+  body.riding .toast{top:calc(env(safe-area-inset-top,0px) + 300px);} }
 body.onfoot .vbtns,body.onfoot #viewBtn,body.onfoot .boost{display:none!important;}
 #huntIntro{position:absolute;inset:0;display:grid;place-items:center;padding:calc(env(safe-area-inset-top,0px) + 16px) 16px calc(env(safe-area-inset-bottom,0px) + 16px);
   background:rgba(4,6,14,.55);pointer-events:auto;overflow:auto;z-index:2;}
@@ -289,7 +297,8 @@ body.driving .title,body.driving .dock{display:none;}
   <div id="cross" hidden></div><div id="lockBox" hidden><span></span></div>
   <div id="killPop" aria-live="polite"></div>
   <div class="scan" id="scanCard" hidden aria-live="polite"></div>
-  <div class="copbtns" role="group" aria-label="Police controls"><button id="carBtn">Get out</button><button id="scanBtn">Scan<small>hold</small></button><button id="detainBtn">Detain</button></div>
+  <div id="rideHud" hidden aria-live="polite"></div><div id="fadeFx"></div>
+  <div class="copbtns" role="group" aria-label="Police controls"><button id="actBtn" hidden></button><button id="carBtn">Get out</button><button id="scanBtn">Scan<small>hold</small></button><button id="detainBtn">Detain</button></div>
   <div id="stick" aria-label="Steering stick"><div id="knob"></div></div>
   <div class="vbtns"><button id="boostBtn">Boost</button><button id="upBtn">Up</button><button id="downBtn">Down</button></div>
   <div id="huntIntro" hidden role="dialog" aria-modal="true" aria-labelledby="hiT"><div class="hi-card">
@@ -3185,7 +3194,7 @@ function updateDrive(dt,t){
 
 /* ---------- HUNT MODE (M-024): 2140 PD patrol. Investigate AI robots on foot and by car; scan, then detain the rogue ones ---------- */
 /* Everything here is created lazily on the first startHunt(), so orbit and normal Fly pay nothing. Gameplay randomness uses Math.random. */
-const hunt={on:false,caseN:1,need:4,got:0,rep:0,dist:'',cx:0,cz:0,scanT:0,scanHeld:false,scanKey:false,scanOf:null,tgt:null,intro:false,nextT:0,cool:0,f:0,readyT:0};
+const hunt={on:false,caseN:1,need:4,got:0,rep:0,dist:'',cx:0,cz:0,scanT:0,scanHeld:false,scanKey:false,scanOf:null,tgt:null,intro:false,nextT:0,cool:0,f:0,readyT:0,st:-1,act:null};
 const units=[];
 const mr=(a,b)=>a+(b-a)*Math.random();
 const huntBar=document.getElementById('huntBar'), progFill=document.getElementById('hpFill'), caseEl=document.getElementById('stars'), objT=document.getElementById('objT'), cashT=document.getElementById('cashT');
@@ -3346,8 +3355,8 @@ function robotParts(){
   if(RB) return RB;
   const N=28, mat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.32,metalness:0.55}), vm=new THREE.MeshBasicMaterial({color:0xffffff});
   const limbG=new THREE.BoxGeometry(0.13,0.8,0.15); limbG.translate(0,-0.4,0);
-  const mk=(g,m,n)=>{ const im=new THREE.InstancedMesh(g,m,n); im.count=0; im.frustumCulled=false; im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    for(let i=0;i<n;i++) im.setColorAt(i,new THREE.Color(1,1,1)); scene.add(im); return im; };
+  const mk=(g,m,n)=>{ const im=new THREE.InstancedMesh(g,m,n); im.frustumCulled=false; im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    for(let i=0;i<n;i++) im.setColorAt(i,new THREE.Color(1,1,1)); im.count=0; /* M-026: after setColorAt, which sizes instanceColor from .count in r128 */ scene.add(im); return im; };
   RB={N,tor:mk(new THREE.BoxGeometry(0.48,0.62,0.3),mat,N),head:mk(new THREE.BoxGeometry(0.3,0.28,0.28),mat,N),vis:mk(new THREE.BoxGeometry(0.27,0.075,0.03),vm,N),
     limb:mk(limbG,mat,N*4),pack:mk(new THREE.BoxGeometry(0.34,0.42,0.18),mat,N)};
   return RB;
@@ -3382,12 +3391,27 @@ function awayDir(u,hp){ const s0=u.s; u.s=((s0+3)%u.P+u.P)%u.P; perim(u); const 
   return a>=b?1:-1; }
 const _hbv=new THREE.Vector3();
 function updateBot(u,dt,t,hp,k){
+  let trYaw=0; if(u.tr) trYaw=trainLocal(u.tr.t,u.tr.i,u.tr.lx,-1.85,u.tr.lz,u.c);
   const dH=Math.hypot(u.c.x-hp.x,u.c.z-hp.z)+Math.abs(u.c.y-hp.y)*0.5;
   let spd=0, lean=0, sink=0, aL=0, aR=0, hRx=0, hRy=0, legA=0.45, vis=u.vis, sc=1;
   if(u.stun>=0){
     u.stun+=dt; const s=Math.min(1,u.stun/0.5); lean=0.42*s; sink=0.14*s; hRx=0.5*s; aL=aR=0.15; legA=0; vis=VIS_OFF;
     if(u.rogue){ if(u.stun>1.8){ sc=Math.max(0,1-(u.stun-1.8)/0.6); if(Math.random()<0.5) explode(_hbv.set(u.c.x,u.c.y+1,u.c.z),2,0.5,1); } if(u.stun>2.4){ removeUnit(u); return; } }
     else if(u.stun>2.6){ u.stun=-1; u.state='walk'; }
+  } else if(u.plat||u.tr){ /* M-026: platform walkers and train riders */
+    u.stT-=dt;
+    if(u.rogue){ u.flkT-=dt; if(u.flkT<=0){ u.flkT=mr(1.6,4); u.flk=0.25; } u.flk-=dt; if(u.scanned||(u.flk>0&&Math.sin(t*60)>-0.3)) vis=VIS_RED; hRy=Math.sin(t*9+u.ph)>0.92?0.6:0; }
+    else { if(u.scanned) vis=VIS_GREEN; if(u.greet<=0&&dH<4.5&&foot.on&&u.stT<=0){ u.greet=2.2; u.stT=12; } }
+    let want=u.yaw;
+    if(u.greet>0){ u.greet-=dt; aR=-2.7+0.35*Math.sin(t*9); want=Math.atan2(hp.x-u.c.x,hp.z-u.c.z); }
+    else if(u.plat){ const P=u.plat, S=P.S, lim=S.len*0.32, alarm=u.rogue&&(u.scanned||dH<10);
+      spd=alarm?(u.scanned?3.6:2.4):u.sp*(u.rogue&&Math.sin(t*4.5+u.ph)<0.2?0.15:1);
+      if(alarm) u.dir=P.al>(hp.x-S.track.x)*S.along.x+(hp.z-S.track.z)*S.along.z?1:-1;
+      P.al+=u.dir*spd*dt; if(P.al>lim){ P.al=lim; u.dir=-1; } if(P.al<-lim){ P.al=-lim; u.dir=1; }
+      want=Math.atan2(S.along.x*u.dir,S.along.z*u.dir); }
+    else { want=trYaw+u.tr.ry+(u.rogue?0.25*Math.sin(t*0.7+u.ph):0); if(u.rogue&&!u.scanned&&Math.sin(t*0.9+u.ph)>0.6){ aL=aR=-1.35+0.25*Math.sin(t*14); } }
+    if(u.plat){ const P=u.plat, S=P.S; u.c.set(S.track.x+S.along.x*P.al+S.side.x*P.ac,ST_Y,S.track.z+S.along.z*P.al+S.side.z*P.ac); }
+    let dy=want-u.yaw; dy=Math.atan2(Math.sin(dy),Math.cos(dy)); u.yaw+=dy*Math.min(1,dt*8);
   } else if(u.roof){
     u.a+=dt*u.sp/u.roof.r; u.c.set(u.roof.x+Math.cos(u.a)*u.roof.r,u.roof.y,u.roof.z+Math.sin(u.a)*u.roof.r); u.yaw=Math.atan2(-Math.sin(u.a),Math.cos(u.a)); spd=u.sp;
     if(dH<5&&foot.on){ u.yaw=Math.atan2(hp.x-u.c.x,hp.z-u.c.z); spd=0; aR=-2.6+0.35*Math.sin(t*8); }
@@ -3441,7 +3465,7 @@ function pop(txt,bad){ killEl.textContent=txt; killEl.classList.toggle('bad',!!b
 function updateHuntHud(){
   caseEl.textContent='Case '+hunt.caseN+' · '+hunt.dist;
   const far=Math.hypot(hunt.cx-heroPos().x,hunt.cz-heroPos().z)>380;
-  objT.textContent=far?'Go to '+hunt.dist+' (cyan dot on the map)':'Rogue robots detained: '+hunt.got+' / '+hunt.need;
+  objT.textContent=far?'Go to '+hunt.dist+' (cyan dot on the map)':'Rogue robots detained: '+hunt.got+' / '+hunt.need+(hunt.st>=0?' · check the platform and trains':'');
   cashT.textContent='Reputation '+hunt.rep;
   progFill.style.transform='scaleX('+(hunt.got/Math.max(1,hunt.need)).toFixed(3)+')';
 }
@@ -3454,8 +3478,26 @@ function streetSpot(x,z){
   return {x,z,yaw:0};
 }
 function clearUnits(){ while(units.length) removeUnit(units[0]); }
+/* M-026: station robots. plat: walks along the platform (al along the track, ac across); tr: stands in car i of train t (car-local lx, lz) */
+function spawnStationBot(rogue,S,tr){
+  const role=ROLES[Math.floor(Math.random()*ROLES.length)];
+  const u={kind:'bot',rogue,role,id:newId(rogue),seq:unitSeq++,alive:true,scanned:false,c:new THREE.Vector3(),yaw:0,cyc:Math.random()*6,ph:Math.random()*6,state:'walk',stT:mr(2,6),flkT:mr(1,3),flk:0,stun:-1,greet:0,
+    dir:Math.random()<0.5?1:-1,sp:mr(0.9,1.3),mk:null,vis:Math.random()<0.5?VIS_CYAN:VIS_GREEN,roof:null,sc:1};
+  if(tr) u.tr={t:tr.t,i:1+Math.floor(Math.random()*(TRAIN-2)),lx:mr(-1.3,1.3),lz:mr(-HZ+1.5,HZ-1.5),ry:Math.random()<0.5?Math.PI/2:-Math.PI/2};
+  else u.plat={S,al:mr(-0.3,0.3)*S.len,ac:mr(ST_E0+2.2,ST_E1-1.6)};
+  units.push(u); return u;
+}
+function stationCase(S){
+  clearUnits(); hunt.st=S.idx; hunt.cx=S.street.x; hunt.cz=S.street.z; hunt.dist=S.name+' Station'; hunt.got=0; hunt.nextT=0;
+  spawnStationBot(true,S); spawnStationBot(true,S,{t:Math.random()<0.5?0:1}); spawnBot(true,S.street.x,S.street.z,6,80);
+  if(!isMobile) spawnStationBot(true,S,{t:Math.random()<0.5?0:1});
+  for(let i=0;i<(isMobile?2:3);i++) spawnStationBot(false,S);
+  for(let i=0;i<(isMobile?2:4);i++) spawnStationBot(false,S,{t:i%2});
+  for(let i=0;i<(isMobile?3:5);i++) spawnBot(false,S.street.x,S.street.z,6,120);
+  hunt.need=units.filter(u=>u.rogue).length; updateHuntHud();
+}
 function newCase(cx,cz){
-  clearUnits(); hunt.cx=cx; hunt.cz=cz; hunt.dist=district(cx,cz); hunt.got=0; hunt.nextT=0;
+  clearUnits(); hunt.st=-1; hunt.cx=cx; hunt.cz=cz; hunt.dist=district(cx,cz); hunt.got=0; hunt.nextT=0;
   hunt.need=(isMobile?3:4)+Math.min(hunt.caseN-1,2);
   const drone=!isMobile, nBots=hunt.need-(drone?1:0), nGood=isMobile?7:12;
   for(let i=0;i<nBots;i++) spawnBot(true,cx,cz,i===0?30:45,i===0?90:200);
@@ -3469,7 +3511,11 @@ function nextCase(){
   const hp=heroPos(); let best=null;
   for(let k=0;k<60;k++){ const s=MANS[Math.floor(Math.random()*MANS.length)], d=Math.hypot(s.x-hp.x,s.z-hp.z); if(d<450||d>1300) continue; if(district(s.x,s.z)===hunt.dist) continue; best=s; break; }
   if(!best) best=MANS[Math.floor(Math.random()*MANS.length)];
-  hunt.caseN++; newCase(best.x,best.z);
+  hunt.caseN++;
+  const ss=STATIONS.filter(S=>S.idx!==hunt.st&&Math.hypot(S.street.x-hp.x,S.street.z-hp.z)>300);
+  if(Math.random()<0.45&&ss.length){ stationCase(ss[Math.floor(Math.random()*ss.length)]);
+    toast('Case '+hunt.caseN+': '+hunt.dist,'Rogue AI on the maglev: check the platform, the plaza and the trains. Take the elevator up.'); return; }
+  newCase(best.x,best.z);
   toast('Case '+hunt.caseN+': '+hunt.dist,'Rogue AI reported there. Follow the cyan dot on your map.');
 }
 /* ---- targeting, scanning, detaining ---- */
@@ -3550,6 +3596,7 @@ function toggleCar(){ if(foot.on) getIn(); else getOut(); }
 /* ---- on-foot update (called from updateDrive while the car is parked) ---- */
 const _hfd=new THREE.Vector3(), _hfc=new THREE.Vector3(), _hfl=new THREE.Vector3();
 function updateFoot(dt,t){
+  if(ride.on){ updateRide(dt,t); return; } /* M-026: riding a maglev car */
   const K=c=>!!keys[c], p=foot.pos;
   /* parked car idles with its light bar on */
   myCar.position.set(drive.pos.x,drive.pos.y,drive.pos.z); myCar.rotation.set(0,drive.yaw,0);
@@ -3588,6 +3635,114 @@ function updateFoot(dt,t){
   if(drive.f%15===0){ const dn=district(p.x,p.z); if(dn!==lastDistrict){ lastDistrict=dn; toast(dn,''); } }
   updateAudio(0,false);
 }
+/* ---- M-026 ride the train: station elevators, boarding, riding (window or outside view), getting off ----
+   Read-only use of the M-025 API (STATIONS, stationGroundAt, trainState, trainCarPose, nextStation, stAhead).
+   The car interior is one InstancedMesh of boxes (1 draw call), built on the first boarding and shown only while riding. */
+const ride={on:false,t:0,i:0,lx:0,lz:0,ly:0,wy:0,side:1,view:0,int:null,act:null,actKey:''};
+const lift={T:0,S:null,up:false,done:false};
+const actBtn=document.getElementById('actBtn'), rideHud=document.getElementById('rideHud'), fadeEl=document.getElementById('fadeFx');
+const KEYS_RIDE='<span>Drag or A D: look</span> · <span>W S: walk in the car</span> · <span>V: window / outside view</span> · <span>Q (hold): scan</span> · <span>Space: detain</span> · <span>E: get off when the doors open</span>';
+const _rp=new THREE.Vector3(), _rq=new THREE.Quaternion(), _rv=new THREE.Vector3(), _rw=new THREE.Vector3();
+/* car-local point (x, y from the body centre, z) of car i of train t -> world (out); returns the car's world yaw */
+function trainLocal(t,i,x,y,z,out){ trainCarPose(t,i,_rp,_rq); out.set(x,y,z).applyQuaternion(_rq).add(_rp); _rw.set(0,0,1).applyQuaternion(_rq); return Math.atan2(_rw.x,_rw.z); }
+function buildInterior(){
+  if(ride.int) return ride.int;
+  const g=new THREE.BoxGeometry(1,1,1), nm=g.attributes.normal, vc=new Float32Array(nm.count*3); /* baked face shading: unlit but readable */
+  for(let i=0;i<nm.count;i++){ const y=nm.getY(i), k=y>0.5?1:y<-0.5?0.55:Math.abs(nm.getX(i))>0.5?0.8:0.68; vc[i*3]=vc[i*3+1]=vc[i*3+2]=k; }
+  g.setAttribute('color',new THREE.BufferAttribute(vc,3));
+  const im=new THREE.InstancedMesh(g,new THREE.MeshBasicMaterial({color:0xffffff,vertexColors:true}),48);
+  im.setColorAt(0,new THREE.Color(1,1,1)); /* r128 sizes instanceColor from .count, so create it before count drops */
+  im.frustumCulled=false; im.visible=false; im.count=0; scene.add(im); ride.int=im; return im;
+}
+/* lay out the boxes for this boarding (door gap on the platform side sd) */
+function layInterior(sd){
+  const im=buildInterior(), L=CL-0.4, m=new THREE.Matrix4(), q=new THREE.Quaternion(), col=new THREE.Color(), bp=new THREE.Vector3(), bs=new THREE.Vector3(); let n=0;
+  const box=(x,y,z,w,h,d,r,g,b)=>{ const k=r>1?1:0.42; m.compose(bp.set(x,y,z),q,bs.set(w,h,d)); im.setMatrixAt(n,m); im.setColorAt(n,col.setRGB(r*k,g*k,b*k)); n++; }; /* night exposure is high: keep the cabin dim */
+  box(0,-1.9,0,4.6,0.1,L,0.13,0.14,0.17);            /* floor */
+  box(0,2.15,0,4.2,0.1,L,0.62,0.64,0.66);            /* ceiling */
+  [-1.15,1.15].forEach(x=>box(x,2.08,0,0.22,0.04,L-1,1.25,1.2,1.05)); /* light strips */
+  [-1,1].forEach(s=>{ box(s*2.25,1.65,0,0.1,1.0,L,0.5,0.52,0.56); /* above the windows (windows: y -0.55..1.15) */
+    for(let z=-L/2+0.15;z<=L/2;z+=2.45) if(!(s===sd&&Math.abs(z)<1.3)) box(s*2.25,0.3,z,0.1,1.7,0.28,0.42,0.44,0.48); /* window pillars */
+    const seg=(z0,z1)=>{ const c=(z0+z1)/2, d=z1-z0; box(s*2.3,-1.2,c,0.1,1.3,d,0.36,0.38,0.42); box(s*1.95,-1.4,c,0.6,0.12,d-0.3,0.08,0.34,0.44); box(s*2.16,-0.95,c,0.1,0.75,d-0.3,0.1,0.4,0.5); };
+    if(s===sd){ seg(-L/2,-1.3); seg(1.3,L/2); } else seg(-L/2,L/2); });
+  [-1,1].forEach(e=>{ box(0,0.15,e*(L/2),4.6,4.1,0.1,0.48,0.5,0.54); box(0,-0.55,e*(L/2-0.07),1.0,2.6,0.06,0.2,0.24,0.3); });
+  [-5.4,-2.6,2.6,5.4].forEach(z=>{ if(Math.abs(z)<L/2-0.5) box(0,0.15,z,0.06,4.0,0.06,0.85,0.86,0.9); }); /* grab poles */
+  im.count=n; im.instanceMatrix.needsUpdate=true; if(im.instanceColor) im.instanceColor.needsUpdate=true;
+}
+/* which station action is available now: elevator up/down, board, get off */
+function stationAct(){
+  if(!hunt.on||!foot.on||lift.T>0) return null;
+  const p=foot.pos;
+  if(ride.on){ const S=trainState[ride.t]; return S.atStation>=0&&S.door>0.5?{k:'off',S:STATIONS[S.atStation]}:null; }
+  for(const S of STATIONS){
+    if(p.y<3){ if(Math.hypot(p.x-S.street.x,p.z-S.street.z)<5||Math.hypot(p.x-S.elev.x,p.z-S.elev.z)<5) return {k:'up',S}; continue; }
+    if(Math.abs(p.y-ST_Y)>0.6||Math.hypot(p.x-S.track.x,p.z-S.track.z)>S.r) continue;
+    if(Math.hypot(p.x-S.elev.x,p.z-S.elev.z)<4) return {k:'down',S};
+    for(let t=0;t<2;t++){ const T=trainState[t]; if(T.atStation!==S.idx||T.door<=0.5) continue;
+      let best=null, bd=1e9;
+      for(let i=1;i<TRAIN-1;i++){ trainCarPose(t,i,_rp,_rq); _rv.copy(p).sub(_rp).applyQuaternion(_rq.invert());
+        if(Math.abs(_rv.z)<PITCH/2+2&&Math.abs(_rv.x)<ST_E0+5&&Math.abs(_rv.z)<bd){ bd=Math.abs(_rv.z); best={k:'board',S,t,i,lz:Math.max(-HZ+2.5,Math.min(HZ-2.5,_rv.z))}; } }
+      if(best) return best; }
+  }
+  return null;
+}
+function refreshAct(){ const a=stationAct(), k=a?a.k:''; hunt.act=a; if(k===ride.actKey) return; ride.actKey=k; actBtn.hidden=!a;
+  if(a){ actBtn.innerHTML={up:'Elevator<small>up · E</small>',down:'Elevator<small>down · E</small>',board:'Board<small>train · E</small>',off:'Get off<small>E</small>'}[k]; if(!matchMedia('(pointer:coarse)').matches) pop({up:'E: elevator up',down:'E: elevator down',board:'E: board the train',off:'E: get off'}[k]); } }
+function doAct(a){
+  if(!a) return;
+  if(a.k==='up'||a.k==='down'){ lift.T=1.5; lift.S=a.S; lift.up=a.k==='up'; lift.done=false; fadeEl.classList.add('on'); beep(880,880,0.12,'sine',0.05); setTimeout(()=>beep(660,660,0.16,'sine',0.05),180); }
+  else if(a.k==='board') boardTrain(a.t,a.i,a.lz);
+  else if(a.k==='off') leaveTrain();
+}
+function liftArrive(){
+  const S=lift.S, s=S.side, d=lift.up?S.dT-2.5:S.dT+5.5;
+  if(lift.up) placeOfficer(S.track.x+s.x*d,ST_Y,S.track.z+s.z*d,Math.atan2(-s.x,-s.z));
+  else placeOfficer(S.track.x+s.x*d,0,S.track.z+s.z*d,Math.atan2(s.x,s.z));
+  toast(S.name+' Station',lift.up?'Platform level. Board a train when its doors open.':'Street level');
+}
+function boardTrain(t,i,lz){
+  const sd=trainCarPose(t,i,_rp,_rq);
+  Object.assign(ride,{on:true,t,i,lx:sd*0.9,lz,side:sd,ly:sd*1.3,view:0}); ride.wy=foot.yaw=trainLocal(t,i,0,0,0,_rv)+ride.ly;
+  layInterior(sd); ride.int.visible=true; foot.mesh.visible=false; foot.trim.visible=false; foot.pitch=0.2;
+  camera.fov=70; camera.updateProjectionMatrix(); fovNow=70;
+  document.body.classList.add('riding'); rideHud.hidden=false; keysEl.innerHTML=KEYS_RIDE; carBtn.innerHTML='Outside<small>view</small>';
+  beep(520,780,0.18,'sine',0.05); pop('All aboard');
+}
+function leaveTrain(){
+  if(!ride.on) return;
+  const st=trainState[ride.t].atStation, sd=ride.side;
+  trainLocal(ride.t,ride.i,sd*(ST_E0+1.4),-1.85,ride.lz,_rv); const yaw=trainLocal(ride.t,ride.i,0,0,0,_rw)+sd*Math.PI/2;
+  ride.on=false; ride.int.visible=false; document.body.classList.remove('riding'); rideHud.hidden=true;
+  placeOfficer(_rv.x,ST_Y,_rv.z,yaw); foot.mesh.visible=true; foot.trim.visible=true;
+  camera.fov=60; camera.updateProjectionMatrix(); fovNow=60;
+  keysEl.innerHTML=KEYS_FOOT; carBtn.textContent='Get in';
+  if(st>=0) toast(STATIONS[st].name+' Station','Take the elevator down at the end of the skybridge.');
+}
+function toggleRideView(){ if(!ride.on) return; ride.view^=1; carBtn.innerHTML=ride.view?'Window<small>view</small>':'Outside<small>view</small>'; }
+function updateRide(dt,t){
+  const K=c=>!!keys[c], S=trainState[ride.t];
+  ride.ly+=foot.yaw-ride.wy; /* pointer drags edit foot.yaw; keep the look relative to the car */
+  ride.ly+=((K('KeyA')||K('ArrowLeft')?1:0)-(K('KeyD')||K('ArrowRight')?1:0)-stick.x*0.8)*dt*2;
+  const fwd=Math.max(-1,Math.min(1,(K('KeyW')||K('ArrowUp')?1:0)-(K('KeyS')||K('ArrowDown')?1:0)+stick.y));
+  ride.lx=Math.max(-1.5,Math.min(1.5,ride.lx+Math.sin(ride.ly)*fwd*dt*2.2)); ride.lz=Math.max(-HZ+1,Math.min(HZ-1,ride.lz+Math.cos(ride.ly)*fwd*dt*2.2));
+  const cy=trainLocal(ride.t,ride.i,ride.lx,-1.85,ride.lz,foot.pos); ride.wy=foot.yaw=cy+ride.ly;
+  ride.int.position.copy(_rp); ride.int.quaternion.copy(_rq);
+  const sf=Math.min(1,S.speed/TR_V);
+  if(!ride.view){ /* standing at the window: eye 1.62 m, a gentle sway that grows with speed */
+    trainLocal(ride.t,ride.i,ride.lx+Math.sin(t*2.3)*0.025*sf,-1.85+1.62+Math.sin(t*7.1)*0.012*sf,ride.lz,camera.position);
+    const pe=-(foot.pitch-0.2)*0.9; _rv.set(Math.sin(ride.ly)*Math.cos(pe),Math.sin(pe),Math.cos(ride.ly)*Math.cos(pe)).applyQuaternion(_rq).add(camera.position);
+    camera.lookAt(_rv); camera.rotateZ(Math.sin(t*1.7)*0.006*sf);
+  } else { /* outside chase view of the train */
+    trainLocal(ride.t,ride.i,ride.side*-9,9,-30,_rv); camera.position.lerp(_rv,1-Math.exp(-dt*4)); trainLocal(ride.t,ride.i,0,0,8,_rw); camera.lookAt(_rw); }
+  spdEl.textContent=Math.round(S.speed*3.6); altEl.textContent=Math.round(foot.pos.y);
+  const hd=((-foot.yaw*180/Math.PI)%360+360)%360; compassStrip.style.transform='translateX('+(-hd*1.6).toFixed(1)+'px)';
+  drive.f=(drive.f||0)+1; if(drive.f%3===0) drawRadar();
+  if(drive.f%10===0||!rideHud.textContent){ let a, b;
+    if(S.atStation>=0){ const nx=nextStation(S,1); a='At '+STATIONS[S.atStation].name; b=(S.door>0.5?'Doors open · get off now':'Doors closing')+' · next: '+(nx>=0?STATIONS[nx].name:'-'); }
+    else { const s=Math.round(stAhead(S,S.next)/TR_V+TR_V/(2*TR_A)); a='Next: '+STATIONS[S.next].name; b='Arriving in '+Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
+    rideHud.innerHTML='<b>'+a+'</b><span>'+b+'</span>'; }
+  updateAudio(0,false);
+}
 /* ---- start / stop ---- */
 function showIntro(){ hunt.intro=true; introEl.hidden=false; setTimeout(()=>{ const b=document.getElementById('hiGo'); if(b) b.focus({preventScroll:true}); },50); }
 function closeIntro(){ if(!hunt.intro) return; hunt.intro=false; introEl.hidden=true; toast('Case '+hunt.caseN+': '+hunt.dist,'Find and detain '+hunt.need+' rogue robots. Most robots are good helpers.'); }
@@ -3605,6 +3760,8 @@ function startHunt(){
 }
 function stopHunt(){
   if(!hunt.on) return;
+  if(ride.on){ ride.on=false; ride.int.visible=false; rideHud.hidden=true; document.body.classList.remove('riding'); camera.fov=62; camera.updateProjectionMatrix(); fovNow=62; }
+  lift.T=0; fadeEl.classList.remove('on'); actBtn.hidden=true; hunt.act=null;
   if(foot.on){ foot.on=false; foot.mesh.visible=false; foot.trim.visible=false; }
   hunt.on=false; hunt.intro=false; introEl.hidden=true; scanCard.hidden=true;
   clearUnits(); if(RB) ['tor','head','vis','limb','pack'].forEach(k=>{ RB[k].count=0; });
@@ -3620,7 +3777,8 @@ huntBtn.addEventListener('click',startHunt);
 function hashHunt(){ if(location.hash==='#hunt'&&!hunt.on) startHunt(); }
 addEventListener('hashchange',hashHunt); setTimeout(hashHunt,0);
 document.getElementById('hiGo').addEventListener('click',closeIntro);
-carBtn.addEventListener('click',toggleCar);
+carBtn.addEventListener('click',()=>{ if(ride.on) toggleRideView(); else toggleCar(); });
+actBtn.addEventListener('click',()=>{ doAct(stationAct()); });
 detainBtn.addEventListener('click',detain);
 { const on=e=>{ hunt.scanHeld=true; scanBtn.classList.add('on'); e.preventDefault(); }, off=()=>{ hunt.scanHeld=false; scanBtn.classList.remove('on'); };
   scanBtn.addEventListener('pointerdown',on); scanBtn.addEventListener('pointerup',off); scanBtn.addEventListener('pointerleave',off); scanBtn.addEventListener('pointercancel',off);
@@ -3630,7 +3788,9 @@ addEventListener('keydown',e=>{
   if(!hunt.on||!drive.on) return;
   if(hunt.intro){ if(['Enter','Space','Escape','KeyE','KeyQ'].includes(e.code)){ e.preventDefault(); e.stopImmediatePropagation(); closeIntro(); } return; }
   if(e.repeat&&e.code!=='KeyQ') return;
-  if(e.code==='KeyE'||(e.code==='KeyF'&&foot.on)){ toggleCar(); e.stopImmediatePropagation(); }
+  if(e.code==='KeyE'){ const a=stationAct(); if(a) doAct(a); else if(ride.on) pop('Wait for the doors to open'); else toggleCar(); e.stopImmediatePropagation(); }
+  else if(e.code==='KeyF'&&foot.on&&!ride.on){ toggleCar(); e.stopImmediatePropagation(); }
+  else if(e.code==='KeyV'&&ride.on){ toggleRideView(); e.stopImmediatePropagation(); }
   else if(e.code==='KeyQ'){ hunt.scanKey=true; }
   else if(e.code==='KeyX'||(e.code==='Enter'&&e.target===document.body)||(e.code==='Space'&&foot.on)){ e.preventDefault(); detain(); }
   else if((e.code==='KeyW'||e.code==='ArrowUp')&&foot.on){ const n=performance.now(); foot.runLatch=n-foot.lastW<320; foot.lastW=n; }
@@ -3644,13 +3804,14 @@ addEventListener('pointermove',e=>{ const d=foot.drag; if(!d||d.id!==e.pointerId
 addEventListener('pointerup',e=>{ const d=foot.drag; if(!d||d.id!==e.pointerId) return; foot.drag=null; if(d.type==='mouse'&&d.moved<6&&hunt.on) detain(); });
 addEventListener('pointercancel',()=>{ foot.drag=null; });
 /* debug hook for tools/shot.js verification (like window.__m2140); M-026 can also use placeOfficer/groundAt/WALK_SURFACES directly */
-window.__m2140hunt={hunt,units,foot,WALK_SURFACES,placeOfficer,groundAt,heroPos,finishScan,detain,getOut,getIn,startHunt,stopHunt};
+window.__m2140hunt={hunt,units,foot,WALK_SURFACES,placeOfficer,groundAt,heroPos,finishScan,detain,getOut,getIn,startHunt,stopHunt,ride,lift,stationAct,doAct,boardTrain,leaveTrain,toggleRideView,newCase,stationCase,refreshAct};
 /* radar: unknown robots grey, scanned good robots green, scanned rogue red (kept on the rim), case area cyan, parked car blue */
 function drawHuntRadar(c,R,sc,rx,rz,fx,fz,p){
   const dot=(x,z,col,r,edge,sq)=>{ const dx=x-p.x, dz=z-p.z; let sx=sc*(rx*dx+rz*dz), sy=-sc*(fx*dx+fz*dz); const L=Math.hypot(sx,sy), lim=R-7;
     if(L>lim){ if(!edge) return; sx*=lim/L; sy*=lim/L; } c.fillStyle=col; c.beginPath(); if(sq) c.rect(R+sx-r,R+sy-r,r*2,r*2); else c.arc(R+sx,R+sy,r,0,Math.PI*2); c.fill(); };
   if(Math.hypot(hunt.cx-p.x,hunt.cz-p.z)>260) dot(hunt.cx,hunt.cz,'#22e6ff',5.5,true);
   if(foot.on) dot(drive.pos.x,drive.pos.z,'#4d8bff',4.5,true,true);
+  if(hunt.st>=0||ride.on||p.y>30) for(let t=0;t<2;t++){ if(ride.on&&t===ride.t) continue; trainLocal(t,TRAIN>>1,0,0,0,_rv); dot(_rv.x,_rv.z,'#e8fbff',3.6,false,true); } /* M-026: maglev trains */
   for(const u of units){ if(u.stun>=0) continue; const rv=u.scanned;
     if(rv&&u.rogue) dot(u.c.x,u.c.z,'#ff2340',4.2,true); else dot(u.c.x,u.c.z,rv?'#3dffb0':'#aab3c2',2.8,false); }
 }
@@ -3677,7 +3838,9 @@ function updateHunt(dt,t){
   /* case flow */
   if(hunt.nextT>0){ hunt.nextT-=dt; if(hunt.nextT<=0) nextCase(); }
   /* HUD */
-  if(hunt.f%10===0){ updateHuntHud(); const a=foot.on?canGetIn():canGetOut(); carBtn.classList.toggle('dim',!a); detainBtn.classList.toggle('dim',!hunt.tgt); scanBtn.classList.toggle('dim',!hunt.tgt); }
+  if(lift.T>0){ lift.T-=dt; if(!lift.done&&lift.T<=0.75){ lift.done=true; liftArrive(); } if(lift.T<=0) fadeEl.classList.remove('on'); }
+  if(hunt.f%3===0) refreshAct();
+  if(hunt.f%10===0){ updateHuntHud(); const a=ride.on||(foot.on?canGetIn():canGetOut()); carBtn.classList.toggle('dim',!a); detainBtn.classList.toggle('dim',!hunt.tgt); scanBtn.classList.toggle('dim',!hunt.tgt); }
   const T=hunt.tgt;
   if(T){ aimPt(T,_t); _t.project(camera);
     if(_t.z<1){ lockEl.hidden=false; lockEl.className=T.scanned?(T.rogue?'rogue':'good'):(hunt.scanOf===T?'scanning':'');
