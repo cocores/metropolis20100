@@ -301,3 +301,9 @@ It also fixes two M-023 nits: the hem wedge and bench sitters perching on the ed
   - Riding: a third-person view inside a full cabin with seats, poles and rails, a ceiling light, passengers, door panels, an end wall with a "Next: X" screen, and robots riding along.
   - Riding budget: +≤8 draw calls on desktop and +≤5 on phone, built lazily.
   - Station benches redone from the owner's photo of a classic NYC subway bench: a dark oak plank seat and back, armrest end blocks, and dowel seat dividers. The photo is kept out of the repo.
+  - Cabin modelled on the owner's 2 subway-car photos (kept out of the repo):
+    - stainless double doors with rounded windows, yellow door-zone floor pads, and a dark speckled floor
+    - light laminate walls, an equipment cabinet, blue bucket seats, a fluorescent ceiling strip and a "Next" screen
+    - storm end doors, with a 2140 refresh
+  - Walk between cars through the end doors. Every car carries passengers plus good and rogue robots, and rogues may flee into the next car.
+  - Riding budget raised to +≤10 draw calls on desktop and +≤6 on phone.
