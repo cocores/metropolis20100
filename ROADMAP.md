@@ -307,3 +307,4 @@ It also fixes two M-023 nits: the hem wedge and bench sitters perching on the ed
     - storm end doors, with a 2140 refresh
   - Walk between cars through the end doors. Every car carries passengers plus good and rogue robots, and rogues may flee into the next car.
   - Riding budget raised to +≤10 draw calls on desktop and +≤6 on phone.
+  - Door cycle taken from the owner's video (frames reviewed; the video is kept out of the repo): steady green jamb/header LEDs while open, then a red 2 Hz flash about 1 s before closing, then a 1.5 s ease-in close with a small bump, then dark when closed. Doors recycle (green and reopen) if the doorway is blocked, at most 2 times, extending the dwell.
