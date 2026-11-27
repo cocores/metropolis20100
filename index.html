@@ -3197,17 +3197,26 @@ function updateDrive(dt,t){
   if(boostKey) fwd=Math.max(fwd,1); /* M-016: B implies forward */
   const turn=Math.max(-1,Math.min(1,(K('KeyA')||K('ArrowLeft')?1:0)-(K('KeyD')||K('ArrowRight')?1:0)-stick.x));
   const vert=(K('Space')||K('KeyR')||vbtn.up?1:0)-(K('ShiftLeft')||K('ShiftRight')||K('KeyF')||vbtn.down?1:0);
-  const boosting=boostKey&&fwd>0.1&&drive.boost>0.02;
+  const rs=!!(RS&&RS.g.visible), carM=rs&&drive.gm<2, rsV=rs&&drive.gm!==2; /* M-030: patrol roadster on its wheels (gm 0 drive, 1 folding up, 2 hover, 3 landing) */
+  const boosting=boostKey&&fwd>0.1&&drive.boost>0.02&&!carM;
   drive.boost=Math.max(0,Math.min(1,drive.boost+(boosting?-0.28:0.1)*dt));
+  if(carM){ /* car handling: ~120 km/h top speed, firm brakes, slow reverse */
+    const s=drive.speed, a=fwd>0.05?fwd*(s<0?16:9*(1-0.6*Math.max(0,s)/RS_TOP)):fwd<-0.05?(s>0.5?fwd*16:fwd*5):0;
+    drive.speed+=a*dt; drive.speed*=Math.exp(-dt*(Math.abs(fwd)<0.05?0.35:0.04)); drive.speed=Math.max(-6,Math.min(RS_TOP,drive.speed));
+  } else {
   const maxF=boosting?150:80;
   drive.speed+=fwd*(boosting?75:36)*dt; drive.speed*=Math.exp(-dt*(Math.abs(fwd)<0.05?0.8:0.22));
   if(drive.speed>maxF) drive.speed+=(maxF-drive.speed)*Math.min(1,dt*2.5);
   drive.speed=Math.max(-20,Math.min(150,drive.speed));
+  if(rs&&drive.gm===3&&Math.abs(drive.speed)>RS_TOP*0.6) drive.speed*=Math.exp(-dt*1.5); }
   /* M-016 touch auto-cruise: a mostly-sideways stick keeps ~22 km/h, so turning never stalls into a wall */
   if(stick.id!==null&&Math.abs(stick.x)>0.25&&Math.abs(stick.x)>Math.abs(stick.y)&&stick.y>-0.3&&drive.speed<6.2) drive.speed=Math.min(6.2,drive.speed+12*dt);
-  drive.yaw+=turn*dt*(1.35-0.35*Math.min(Math.abs(drive.speed)/150,1));
+  if(carM) drive.yaw+=turn*dt*Math.max(-1,Math.min(1,drive.speed/5))*(1.3-0.6*Math.min(Math.abs(drive.speed)/RS_TOP,1)); /* wheels: no turning on the spot */
+  else drive.yaw+=turn*dt*(1.35-0.35*Math.min(Math.abs(drive.speed)/150,1));
+  if(rs) drive.steer+=(turn*0.45-drive.steer)*(1-Math.exp(-dt*8));
   /* M-016: the climb rate ramps while Up is held (13 m/s at first, up to 40 m/s after ~2 s) */
-  if(vert>0){ drive.climbT+=dt; drive.vy+=(Math.min(40,13+12*drive.climbT)-drive.vy)*(1-Math.exp(-dt*3)); }
+  if(rsV){ drive.climbT=0; } /* M-030: rsVert() owns the height on the ground, while folding and while landing */
+  else if(vert>0){ drive.climbT+=dt; drive.vy+=(Math.min(40,13+12*drive.climbT)-drive.vy)*(1-Math.exp(-dt*3)); }
   else { drive.climbT=0; drive.vy+=vert*34*dt; drive.vy*=Math.exp(-dt*2.6); drive.vy=Math.max(-26,Math.min(40,drive.vy)); }
   _dir.set(Math.sin(drive.yaw),0,Math.cos(drive.yaw));
   const p=drive.pos; p.addScaledVector(_dir,drive.speed*dt); p.y+=drive.vy*dt;
@@ -3227,12 +3236,12 @@ function updateDrive(dt,t){
   }
   if(drive.roofT!==null&&drive.roofT>8&&Math.abs(drive.speed)<5&&!drive.landed){ drive.landed=true; toast('Landed','On a rooftop '+Math.round(drive.roofT)+' m up'); }
   if(drive.roofT===null) drive.landed=false;
-  if(p.y<2.4){ p.y=2.4; drive.vy=Math.max(drive.vy,0); }
+  if(rs) rsVert(p,dt,vert); else if(p.y<2.4){ p.y=2.4; drive.vy=Math.max(drive.vy,0); }
   p.y=Math.min(p.y,1200); p.x=Math.max(-3400,Math.min(3400,p.x)); p.z=Math.max(-3200,Math.min(3500,p.z));
   const k=1-Math.exp(-dt*5);
-  drive.roll+=(-turn*0.38*Math.min(Math.abs(drive.speed)/30,1)-drive.roll)*k;
-  drive.pitch+=(-Math.max(-26,Math.min(26,drive.vy))*0.018-drive.pitch)*k;
-  myCar.position.set(p.x,p.y+Math.sin(t*3)*0.07,p.z); myCar.rotation.set(drive.pitch,drive.yaw,drive.roll);
+  drive.roll+=(-turn*(carM?0.05:0.38)*Math.min(Math.abs(drive.speed)/30,1)-drive.roll)*k;
+  drive.pitch+=((rsV?0:-Math.max(-26,Math.min(26,drive.vy))*0.018)-drive.pitch)*k;
+  myCar.position.set(p.x,p.y+Math.sin(t*3)*0.07*(rs?drive.glow:1),p.z); myCar.rotation.set(drive.pitch,drive.yaw,drive.roll);
   carSpot.intensity=0.4+3.2*cur.lamp; underL.intensity=0.6+1.6*cur.lamp; coneU.uL.value=cur.lamp;
   fans.forEach(f=>{ f.rotation.y+=dt*(10+Math.abs(drive.speed)*0.5+Math.abs(drive.vy)*2+(boosting?20:0)); });
   if(thrMat) thrMat.color.copy(thrBase).multiplyScalar(1.8+Math.abs(fwd)*1.2+Math.abs(vert)*1.2+(boosting?2.5:0));
@@ -3258,7 +3267,8 @@ function updateDrive(dt,t){
   if(drive.shake>0.01){ const s=drive.shake*0.7; camera.position.x+=(Math.random()-0.5)*s; camera.position.y+=(Math.random()-0.5)*s; camera.position.z+=(Math.random()-0.5)*s; }
   const fov=62+Math.abs(drive.speed)*0.12+(boosting?10:0); fovNow+=(fov-fovNow)*(1-Math.exp(-dt*4));
   if(Math.abs(camera.fov-fovNow)>0.05){ camera.fov=fovNow; camera.updateProjectionMatrix(); }
-  spdEl.textContent=Math.round(Math.abs(drive.speed)*3.6); altEl.textContent=Math.round(p.y);
+  spdEl.textContent=Math.round(Math.abs(drive.speed)*3.6); altEl.textContent=Math.round(rs?Math.max(0,p.y-RS_RIDE):p.y);
+  if(rs) trailPts.visible=drive.glow>0.5;
   boostBar.style.transform='scaleX('+drive.boost.toFixed(3)+')';
   speedFx.style.opacity=String(Math.min(1,Math.max(0,(Math.abs(drive.speed)-45)/100)+(boosting?0.35:0)).toFixed(2));
   const hd=((-drive.yaw*180/Math.PI)%360+360)%360; compassStrip.style.transform='translateX('+(-hd*1.6).toFixed(1)+'px)';
@@ -3483,7 +3493,7 @@ function buildRoadster(){
     for(let i=0;i<nz;i++) for(let j=0;j<nr;j++){ const a=i*(nr+1)+j, b=a+nr+1; idx.push(a,a+1,b, b,a+1,b+1); }
     const bg=new THREE.BufferGeometry(); bg.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); bg.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
     bg.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2)); bg.setIndex(idx); bg.computeVertexNormals(); add(bg,paint,true); }
-  const CH=[], GU=[], LE=[], WO=[], GL=[], LA=[], GW=[];
+  const CH=[], LE=[], WO=[], GL=[], LA=[], GW=[];
   /* headlamps in the wing tips (chrome bezel + lens), amber indicators, tail lamps */
   [-1,1].forEach(sx=>{
     CH.push(rsAt(new THREE.CylinderGeometry(0.1,0.1,0.1,20,1,true),sx*0.47,0.215,2.01,Math.PI/2));
@@ -3524,24 +3534,23 @@ function buildRoadster(){
   LE.push(rsRod(V(0.36,0.55,0.17),V(0.36,0.42,0.48),0.022,8));
   { const xs=rsSideX(0.32,0.42); CH.push(rsRod(V(xs-0.02,0.42,0.32),V(xs+0.07,0.53,0.32),0.008,5)); CH.push(rsAt(new THREE.SphereGeometry(0.045,12,8),xs+0.08,0.545,0.31,0,0,0,1,0.9,1.7)); }
   /* hover turbines: gunmetal housing, chrome bracket, cyan rings + inner glow disc (static); rotors spin */
-  const rot=[], rotG=(()=>{ const L=[new THREE.CylinderGeometry(0.235,0.235,0.05,28)];
+  const rotG=(()=>{ const L=[new THREE.CylinderGeometry(0.235,0.235,0.05,28)];
     for(let i=0;i<18;i++) L.push(new THREE.BoxGeometry(0.075,0.2,0.016).translate(0.262,0,0).rotateY(i*Math.PI*2/18));
     for(let i=0;i<5;i++) L.push(new THREE.BoxGeometry(0.2,0.03,0.045).translate(0.12,0.05,0).rotateY(i*Math.PI*2/5));
     L.push(new THREE.CylinderGeometry(0.07,0.1,0.07,18).translate(0,0.085,0)); L.push(new THREE.SphereGeometry(0.07,14,6,0,Math.PI*2,0,Math.PI/2).translate(0,0.12,0));
     return rsMerge(L); })();
   const hsg=new THREE.LatheGeometry([[0.3,0.115],[0.34,0.125],[0.355,0.1],[0.36,0],[0.355,-0.1],[0.34,-0.125],[0.3,-0.115]].map(([r,y])=>new THREE.Vector2(r,y)),36);
-  RS_T.forEach(([x,z])=>{ const sx=Math.sign(x), rz=-sx*Math.PI/2, Y=RS_TY;
-    const T=geo=>rsAt(geo,x,Y,z,0,0,rz);
-    GU.push(T(hsg.clone()));
-    CH.push(T(new THREE.BoxGeometry(0.07,0.045,0.66).translate(0,0.14,0)));
-    [-0.31,0.31].forEach(o=>GU.push(T(new THREE.BoxGeometry(0.13,0.09,0.09).translate(0,0.13,o))));
-    GW.push(rsTint(T(new THREE.TorusGeometry(0.29,0.02,6,40).rotateX(Math.PI/2).translate(0,0.118,0)),0.3,0.8,0.86));
-    GW.push(rsTint(T(new THREE.TorusGeometry(0.15,0.012,6,28).rotateX(Math.PI/2).translate(0,0.125,0)),0.3,0.8,0.86));
-    GW.push(rsTint(T(new THREE.CircleGeometry(0.3,28).rotateX(-Math.PI/2).translate(0,-0.03,0)),0.08,0.36,0.44));
-    const h=new THREE.Group(); h.position.set(x,Y,z); h.rotation.z=rz; g.add(h);
-    const r=new THREE.Mesh(rotG,chrome); r.castShadow=true; r.userData.sx=sx; h.add(r); rot.push(r); });
-  add(rsMerge(CH),chrome,true); add(rsMerge(GU),gun,true); add(rsMerge(LE),leather,true); add(rsMerge(WO),wood,true);
-  add(rsMerge(GL),glass); add(rsMerge(LA),lampM); const glowMesh=add(rsMerge(GW),glowM2);
+  /* M-030: each wheel is built in its own frame (axle = local +y, outer face up) and drawn as one InstancedMesh per material,
+     so the four can roll, steer and swing flat. Rubber tyre round the gunmetal turbine housing; the chrome rotor is the hub. */
+  const tyreG=new THREE.LatheGeometry([[0.31,0.118],[0.37,0.132],[0.4,0.115],[0.412,0.06],[0.414,0],[0.412,-0.06],[0.4,-0.115],[0.37,-0.132],[0.31,-0.118]].map(([r,y])=>new THREE.Vector2(r,y)),40);
+  const glowG=rsMerge([rsTint(new THREE.TorusGeometry(0.29,0.02,6,40).rotateX(Math.PI/2).translate(0,0.118,0),0.3,0.8,0.86),
+    rsTint(new THREE.TorusGeometry(0.15,0.012,6,28).rotateX(Math.PI/2).translate(0,0.125,0),0.3,0.8,0.86),
+    rsTint(new THREE.CircleGeometry(0.3,28).rotateX(-Math.PI/2).translate(0,-0.03,0),0.08,0.36,0.44)]);
+  const rubber=new THREE.MeshStandardMaterial({color:C(0x18191c),roughness:0.86,metalness:0});
+  const inst=(geo,mat,sh)=>{ const m=new THREE.InstancedMesh(geo,mat,4); m.castShadow=!!sh; m.frustumCulled=false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); g.add(m); return m; };
+  const wI={hous:inst(hsg,gun,true),tyre:inst(tyreG,rubber,true),glow:inst(glowG,glowM2),rot:inst(rotG,chrome,true)};
+  add(rsMerge(CH),chrome,true); add(rsMerge(LE),leather,true); add(rsMerge(WO),wood,true);
+  add(rsMerge(GL),glass); add(rsMerge(LA),lampM);
   /* gauge faces (canvas dial) */
   { const c=document.createElement('canvas'); c.width=c.height=128; const x=c.getContext('2d'); x.fillStyle='#0b0c0e'; x.fillRect(0,0,128,128);
     x.translate(64,64); x.strokeStyle='#dcdcd2'; for(let i=0;i<=10;i++){ const a=-2.4+i*0.48; x.lineWidth=i%5?2:4; x.beginPath(); x.moveTo(Math.cos(a)*50,Math.sin(a)*50); x.lineTo(Math.cos(a)*(i%5?42:36),Math.sin(a)*(i%5?42:36)); x.stroke(); }
@@ -3573,7 +3582,7 @@ function buildRoadster(){
   /* soft cyan pool of light on the ground while hovering low (world-space, placed each frame) */
   const pool=new THREE.Mesh(new THREE.PlaneGeometry(3.8,5.8).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({map:glow,color:new THREE.Color(0.3,0.72,0.86),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}));
   pool.visible=false; pool.frustumCulled=false; scene.add(pool);
-  return {g,rot,wheel,glowMat:glowM2,coneU:coneU2,pool,rimU,hero:null,m14cock:cockpit.children.slice(),cones:myCar.children.filter(o=>o.material&&o.material.uniforms===coneU)};
+  return {g,wI,spin:[0,0,0,0],wheel,glowMat:glowM2,coneU:coneU2,pool,rimU,hero:null,m14cock:cockpit.children.slice(),cones:myCar.children.filter(o=>o.material&&o.material.uniforms===coneU)};
 }
 function roadsterOn(on){
   if(!RS){ if(!on) return; RS=buildRoadster();
@@ -3581,23 +3590,65 @@ function roadsterOn(on){
     const keep=new Set([RS.g,carSpot,spotT,underL,cockpit,...RS.cones]); const hero=new THREE.Group();
     myCar.children.filter(o=>!keep.has(o)).forEach(o=>hero.add(o)); myCar.add(hero); RS.hero=hero;
     if(police) RS.g.add(police.bar); police.bar.position.set(0,0.6,-1.49); police.bar.scale.setScalar(0.62); }
-  RS.g.visible=on; RS.hero.visible=!on; RS.m14cock.forEach(o=>{ o.visible=!on; }); if(!on){ RS.pool.visible=false; RS.g.position.set(0,0,0); }
+  RS.g.visible=on; RS.hero.visible=!on; RS.m14cock.forEach(o=>{ o.visible=!on; }); if(!on){ RS.pool.visible=false; RS.g.position.set(0,0,0); trailPts.visible=drive.on; }
   RS.cones.forEach(c=>{ c.position.x=Math.sign(c.position.x)*(on?0.47:0.45); c.position.y=on?0.215:0.08; c.position.z=on?2.1:3.35; });
   carSpot.position.set(0,on?0.22:0.1,on?2.15:3.4);
   trailOff[0]=on?0.62:1.72; trailOff[1]=on?-0.55:-0.3; trailOff[2]=on?-1.25:-2.0;
 }
+/* ---- M-030: drive on the wheels; Up folds them flat (90 deg about the long axis, disc down) and the turbines lift the car; landing reverses it.
+   drive.gm: 0 driving, 1 folding up, 2 hovering (normal flight model), 3 landing. drive.ft runs 0..RS_FT (fold 0..0.9 s, glow + rise after). */
+const RS_RIDE=0.6, RS_TOP=33.3, RS_FT=1.2, RS_UP=0.6;
+const rsE=x=>x<=0?0:x>=1?1:x*x*(3-2*x);
+function rsMech(up){ beep(up?140:300,up?300:130,0.42,'sawtooth',0.025); setTimeout(()=>beep(up?900:700,up?700:900,0.06,'square',0.03),up?430:20); thud(0.15); }
+function rsGround(on){ drive.gm=0; drive.ft=0; drive.vy=0; drive.fold=0; drive.glow=0; drive.steer=0; drive.airT=0;
+  if(on) drive.pos.y=groundAt(drive.pos.x,drive.pos.z,drive.pos.y)+RS_RIDE; }
+function rsVert(p,dt,vert){
+  const base=groundAt(p.x,p.z,p.y-RS_RIDE)+RS_RIDE, hov=()=>base+RS_UP*rsE((drive.ft-0.75)/(RS_FT-0.75));
+  if(drive.gm===0){
+    if(p.y-base>0.7||drive.vy<0){ drive.vy-=22*dt; if(p.y<=base){ p.y=base; drive.vy=0; } } /* rolled off an edge: fall */
+    else { p.y+=(base-p.y)*Math.min(1,dt*14); drive.vy=0; } /* kerbs and small steps */
+    if(vert>0&&drive.vy===0){ drive.gm=1; rsMech(true); }
+  } else if(drive.gm===1){
+    if(vert<0){ drive.gm=3; rsMech(false); }
+    drive.ft=Math.min(RS_FT,drive.ft+dt); p.y=hov(); drive.vy=0;
+    if(drive.ft>=RS_FT&&drive.gm===1){ drive.gm=2; drive.vy=vert>0?10:3; drive.airT=0; drive.climbT=0; }
+  } else if(drive.gm===2){
+    drive.airT+=dt; drive.ft=RS_FT;
+    if(p.y<base+RS_UP){ p.y=base+RS_UP; drive.vy=Math.max(drive.vy,0); }
+    const h=p.y-base;
+    if((vert<0&&h<2.2)||(vert<=0&&h<1.1&&Math.abs(drive.speed)<6&&drive.airT>2.5)){ drive.gm=3; drive.vy=0; rsMech(false); }
+  } else {
+    if(vert>0){ drive.gm=1; rsMech(true); }
+    else { const hv=hov(); drive.vy=0;
+      if(p.y>hv+0.05) p.y=Math.max(hv,p.y-Math.max(3,(p.y-hv)*3)*dt); /* settle down to the hover height first */
+      else { drive.ft=Math.max(0,drive.ft-dt); p.y=hov(); if(drive.ft<=0) rsGround(false); } }
+  }
+  if(RS.hold!=null){ drive.ft=RS.hold; if(drive.gm!==2) p.y=hov(); } /* shot hook: freeze the transform */
+  drive.fold=rsE(drive.ft/0.9); drive.glow=rsE((drive.ft-0.55)/(RS_FT-0.55));
+}
+const _rwM=new THREE.Matrix4(), _rwR=new THREE.Matrix4(), _rwQ=new THREE.Quaternion(), _rwQ2=new THREE.Quaternion(), _rwP=new THREE.Vector3(), _rwS=new THREE.Vector3(1,1,1), ZAX=new THREE.Vector3(0,0,1);
 function updateRoadster(dt,t){
   if(!RS||!RS.g.visible) return;
   const thr=foot.on?0:Math.max(0,Math.min(1,(thrMat.color.g/Math.max(thrBase.g,1e-4)-1.8)/3.2));
-  const spin=dt*(foot.on?2.5:6+Math.abs(drive.speed)*0.45+thr*16);
-  RS.rot.forEach(r=>{ r.rotation.y+=r.userData.sx*spin; });
-  RS.glowMat.color.setScalar(0.74+0.26*thr); RS.coneU.uT.value=foot.on?0.2:0.55+0.9*thr;
+  const fold=drive.fold||0, gl=drive.glow||0, W=RS.wI;
+  /* rolling on the road (v / r); spinning as turbines once folded */
+  const roll=drive.speed*dt/0.414*(1-fold), spin=dt*(foot.on?2.5*gl:(6+Math.abs(drive.speed)*0.45+thr*16)*gl);
+  RS_T.forEach(([x,z],i)=>{ const sx=Math.sign(x);
+    RS.spin[i]+=sx*(roll+spin);
+    _rwP.set(x-sx*0.02*fold,RS_TY-0.06*fold,z);
+    _rwQ.setFromAxisAngle(YAX,z>0?(drive.steer||0)*(1-fold):0); _rwQ2.setFromAxisAngle(ZAX,-sx*Math.PI/2*(1+fold)); _rwQ.multiply(_rwQ2);
+    _rwM.compose(_rwP,_rwQ,_rwS); W.hous.setMatrixAt(i,_rwM); W.tyre.setMatrixAt(i,_rwM); W.glow.setMatrixAt(i,_rwM);
+    _rwR.makeRotationY(RS.spin[i]); _rwM.multiply(_rwR); W.rot.setMatrixAt(i,_rwM); });
+  for(const k in W) W[k].instanceMatrix.needsUpdate=true;
+  RS.glowMat.color.setScalar(0.08+(0.66+0.26*thr)*gl); RS.coneU.uT.value=(foot.on?0.2:0.55+0.9*thr)*gl;
+  underL.intensity*=0.15+0.85*gl;
+  if(RS.cam&&!foot.on){ myCar.updateMatrixWorld(); _rwP.fromArray(RS.cam); myCar.localToWorld(_rwP); camera.position.copy(_rwP); _rwP.set(0,0.1,0.2); myCar.localToWorld(_rwP); camera.lookAt(_rwP); } /* shot hook: car-local camera */
   RS.wheel.rotation.z=-(yoke.rotation.z-Math.PI)*1.6;
   const ck=drive.cockpit&&!foot.on; RS.g.position.set(ck?-0.36:0,ck?0.45:0,ck?0.58:0); /* cockpit view: driver's eye under the fixed camera */
   RS.rimU.value.setRGB(0.5,0.72,1).multiplyScalar(0.04+0.32*cur.lamp);
   const gy=groundAt(drive.pos.x,drive.pos.z,drive.pos.y), hgt=myCar.position.y-0.6-gy, pl=RS.pool;
-  pl.visible=hgt<6;
-  if(pl.visible){ pl.position.set(myCar.position.x,gy+0.04,myCar.position.z); pl.rotation.y=drive.yaw; pl.material.opacity=(1-hgt/6)*(0.12+0.5*cur.lamp)*(0.8+0.2*thr); }
+  pl.visible=hgt<6&&gl>0.01;
+  if(pl.visible){ pl.position.set(myCar.position.x,gy+0.04,myCar.position.z); pl.rotation.y=drive.yaw; pl.material.opacity=Math.max(0,1-hgt/6)*(0.12+0.5*cur.lamp)*(0.8+0.2*thr)*gl; }
 }
 /* ---- AI robots (instanced: torso, head, visor, limbs, pack) ---- */
 const ROLES=[{name:'Courier',model:'KX-3 Courier',job:'delivering parcels',body:0xe8ecf2,pack:0xff9a2e},
@@ -3832,7 +3883,7 @@ function getOut(){
   if(!hunt.on||foot.on) return;
   if(!canGetOut()){ toast(drive.pos.y-carGround()>=6.5?'Fly lower to get out':'Slow down to get out','Get close to the street or a rooftop (under 6 m), then press E or Get out.'); return; }
   if(drive.cockpit) toggleView();
-  const g=carGround(); drive.speed=0; drive.vy=0; drive.pos.y=g+0.55; drive.roll=drive.pitch=0;
+  const g=carGround(); drive.speed=0; drive.vy=0; drive.pos.y=g+RS_RIDE; drive.roll=drive.pitch=0; rsGround(false); /* M-030: parks on its wheels */
   const fx=Math.sin(drive.yaw), fz=Math.cos(drive.yaw); let spot=null;
   for(const [r,f] of [[-1.5,-0.3],[1.5,-0.3],[-3.3,0],[3.3,0],[0,-5.4],[0,5.4],[-3.3,-3],[3.3,-3],[-3.3,3]]){ const x=drive.pos.x-fz*r+fx*f, z=drive.pos.z+fx*r+fz*f, gg=groundAt(x,z,g+0.6);
     if(Math.abs(gg-g)<1&&!solidAt(x,gg+1,z,0.45)){ spot={x,z,y:gg}; break; } }
@@ -4212,8 +4263,8 @@ function startHunt(){
   if(hunt.on) return;
   if(!drive.on) enterDrive();
   robotParts(); ensureOfficer(); setPolice(true); exPts.visible=true;
-  const s=streetSpot(drive.pos.x,drive.pos.z); drive.pos.set(s.x,3.2,s.z); drive.yaw=s.yaw; drive.speed=0; drive.vy=0;
-  { const fx=Math.sin(s.yaw), fz=Math.cos(s.yaw); camera.position.set(s.x-fx*14,3.2+4.6,s.z-fz*14); camera.lookAt(s.x+fx*9,4.8,s.z+fz*9); }
+  const s=streetSpot(drive.pos.x,drive.pos.z); drive.pos.set(s.x,RS_RIDE,s.z); drive.yaw=s.yaw; drive.speed=0; rsGround(true); /* M-030: start on the wheels */
+  { const fx=Math.sin(s.yaw), fz=Math.cos(s.yaw), y=drive.pos.y; camera.position.set(s.x-fx*14,y+4.6,s.z-fz*14); camera.lookAt(s.x+fx*9,y+1.6,s.z+fz*9); }
   resetTrail();
   Object.assign(hunt,{on:true,caseN:1,got:0,rep:0,scanT:0,scanOf:null,tgt:null,cool:0,f:0,nextT:0});
   newCase(s.x,s.z); lastDistrict=hunt.dist;
@@ -4268,7 +4319,7 @@ addEventListener('pointercancel',()=>{ foot.drag=null; });
 /* debug hook for tools/shot.js verification (like window.__m2140); M-026 can also use placeOfficer/groundAt/WALK_SURFACES directly */
 window.__m2140hunt={hunt,units,foot,WALK_SURFACES,placeOfficer,groundAt,heroPos,finishScan,detain,getOut,getIn,startHunt,stopHunt,ride,lift,stationAct,doAct,boardTrain,leaveTrain,toggleRideView,newCase,stationCase,refreshAct,cab,walkBoard,HZ,PITCH,CAB_H2,spawnStationBot};
 /* M-029 verification hook (tools/shot.js): drive state, keys, the car, and an instant mood switch */
-window.__m2140hunt.m029={drive,keys,myCar,toggleView,closeIntro,snap(m){ target=P[m]; for(const f in cur){ if(cur[f].isColor) cur[f].copy(target[f]); else cur[f]=target[f]; } apply(); updateEnv(); }};
+window.__m2140hunt.m029={drive,keys,myCar,toggleView,closeIntro,rs:()=>RS,rsVert,rsGround,snap(m){ target=P[m]; for(const f in cur){ if(cur[f].isColor) cur[f].copy(target[f]); else cur[f]=target[f]; } apply(); updateEnv(); }};
 /* radar: unknown robots grey, scanned good robots green, scanned rogue red (kept on the rim), case area cyan, parked car blue */
 function drawHuntRadar(c,R,sc,rx,rz,fx,fz,p){
   const dot=(x,z,col,r,edge,sq)=>{ const dx=x-p.x, dz=z-p.z; let sx=sc*(rx*dx+rz*dz), sy=-sc*(fx*dx+fz*dz); const L=Math.hypot(sx,sy), lim=R-7;
