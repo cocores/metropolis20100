@@ -300,3 +300,4 @@ It also fixes two M-023 nits: the hem wedge and bench sitters perching on the ed
   - Walk-on boarding: walking through an open door boards the train, and walking out gets you off. The buttons stay as a fallback.
   - Riding: a third-person view inside a full cabin with seats, poles and rails, a ceiling light, passengers, door panels, an end wall with a "Next: X" screen, and robots riding along.
   - Riding budget: +≤8 draw calls on desktop and +≤5 on phone, built lazily.
+  - Station benches redone from the owner's photo of a classic NYC subway bench: a dark oak plank seat and back, armrest end blocks, and dowel seat dividers. The photo is kept out of the repo.
