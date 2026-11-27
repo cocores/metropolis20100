@@ -1708,7 +1708,7 @@ const loop=new THREE.CatmullRomCurve3(loopPts,true,'centripetal');
      stationGroundAt(x,z) -> ST_Y when (x,z) is on a platform, skybridge or the elevator's top landing, else null.  */
 const LOOP_L=loop.getLength(), CAR_DU=0.0028;
 const ST_Y=38+4.4-1.85, ST_E0=2.75, ST_W=8, ST_E1=ST_E0+ST_W, ST_HU=6.2*CAR_DU, ST_CAN=76;
-const STATIONS=[];
+const STATIONS=[], ST_BENCH=[];
 {
   const DEF=[['Hudson Yards',0.12],['Westside Arc',0.26],['Northpoint',0.402],['Harlem Meer',0.51],['Park East',0.615],['Midtown Spire',0.75],['Seaport',0.905],['Battery Terminal',0.99]];
   const onLand=(x,z)=>z>-1458&&z<1588&&Math.abs(x)<=halfW(z)+15;
@@ -1767,7 +1767,7 @@ let stCabins=null, stPts=null;
     const P=[[r0,q0],[r1,q0],[r1,q1],[r0,q0],[r1,q1],[r0,q1]];
     P.forEach(([r,q])=>{ const [x,z]=W(a+Math.cos(q)*r,b+Math.sin(q)*r); GL.p.push(x,y,z); GL.n.push(0,1,0); GL.c.push(col.r,col.g,col.b); }); } };
   const pt=(a,y,b)=>{ const [x,z]=W(a,b); PT.push(x,y,z); };
-  const cDeck=C(0x8c929b), cYel=C(0xe2b62a), cWhite=C(0xe6eaef), cDark=C(0x242a34), cWood=C(0x9a6a44), cPlaza=C(0x9fa3aa), cStone=C(0x5c626c);
+  const cDeck=C(0x8c929b), cYel=C(0xe2b62a), cWhite=C(0xe6eaef), cDark=C(0x242a34), cWood=C(0x9a6a44), cOak=[0x8a5c3c,0x7a5034,0x986a46,0xc49a6a,0x6e4830].map(C), cPlaza=C(0x9fa3aa), cStone=C(0x5c626c);
   const cCy=C(0x22e6ff), cWarm=C(0xfff0d8);
   const rowUV=k=>[0,1-(k+1)*112/1024,1,1-k*112/1024], ROUND=[0,0,0.125,0.125];
   const Y=ST_Y, COLS=isMobile?19:12;
@@ -1799,13 +1799,25 @@ let stCabins=null, stPts=null;
     /* columns + cross-heads under the deck */
     for(let arc=-span/2+8;arc<=span/2-4;arc+=28){ const z=atArc(arc);
       box(GS,6.3,7.2,-2,Y-1.3,z-0.45,z+0.45,cWhite); box(GS,ST_E0+0.3,ST_E1-0.3,Y-1.3,Y-0.7,z-0.5,z+0.5,cWhite); }
+    /* M-028: classic NYC subway bench (owner photo): thick dark-oak seat plank, one tall backrest plank on short square posts with a
+       gap, chunky square end blocks, round dowel dividers every 0.6 m, two heavy square legs. Merged into GS (no extra draw call);
+       grain = lengthwise strips of slightly different stain, lighter scuffed front edges. Seat faces the track (-s). */
+    const stBench=zb=>{ const y=Y; ST_BENCH.push(W(8.75,zb),W(6.5,zb),W(8.75,zb+1)); /* centre, a point toward the track, a point along (debug shots) */
+      [[8.36,8.6,cOak[0]],[8.6,8.86,cOak[1]],[8.86,9.1,cOak[2]]].forEach(([a,b,c])=>box(GS,a,b,y+0.4,y+0.49,zb-1.2,zb+1.2,c)); /* seat plank */
+      box(GS,8.33,8.36,y+0.4,y+0.495,zb-1.2,zb+1.2,cOak[3]);                                     /* worn front edge */
+      box(GS,9.12,9.2,y+0.6,y+0.79,zb-1.18,zb+1.18,cOak[1]); box(GS,9.12,9.2,y+0.79,y+0.96,zb-1.18,zb+1.18,cOak[0]); /* backrest plank */
+      box(GS,9.11,9.12,y+0.94,y+0.965,zb-1.18,zb+1.18,cOak[3]);                                  /* scuffed top edge */
+      [-0.6,0,0.6].forEach(d=>{ box(GS,9.13,9.19,y+0.49,y+0.6,zb+d-0.035,zb+d+0.035,cOak[4]);   /* short square post */
+        box(GS,8.42,9.12,y+0.495,y+0.535,zb+d-0.03,zb+d+0.03,cOak[2]); box(GS,8.42,9.12,y+0.49,y+0.54,zb+d-0.02,zb+d+0.02,cOak[2]); }); /* dowel (rounded by two crossed bars) */
+      [-1,1].forEach(k=>{ box(GS,8.3,9.22,y+0.38,y+0.7,zb+k*1.2-(k>0?0:0.13),zb+k*1.2+(k>0?0.13:0),cOak[4]); /* end block armrest */
+        box(GS,8.29,8.3,y+0.38,y+0.7,zb+k*1.2-(k>0?0:0.13),zb+k*1.2+(k>0?0.13:0),cOak[3]);
+        box(GS,8.62,8.84,y,y+0.4,zb+k*0.8-0.1,zb+k*0.8+0.1,cOak[4]); }); };                      /* heavy square legs */
     /* canopy columns + cantilever arms, benches between them, warm lamps under the roof */
     for(let arc=-ST_CAN;arc<=ST_CAN+0.01;arc+=COLS){ const z=atArc(arc);
       box(GS,9.8,10.1,Y,Y+5.1,z-0.15,z+0.15,cWhite,0.12); box(GS,3.2,10.5,Y+5.05,Y+5.35,z-0.12,z+0.12,cWhite,0.3);
       box(GL,9.78,9.8,Y+0.4,Y+4.9,z-0.04,z+0.04,cCy);
       if(arc+COLS/2<ST_CAN&&Math.abs(arc+COLS/2)>4){ const zb=atArc(arc+COLS/2);
-        box(GS,8.3,9.2,Y+0.42,Y+0.5,zb-1.2,zb+1.2,cWood); box(GS,9.15,9.25,Y+0.5,Y+0.95,zb-1.2,zb+1.2,cWood);
-        [-1,1].forEach(k=>box(GS,8.45,9.1,Y,Y+0.42,zb+k*1.0-0.06,zb+k*1.0+0.06,cDark)); }
+        stBench(zb); }
       if(arc+COLS/2<ST_CAN){ const zl=atArc(arc+COLS/2); pt(6.75,Y+4.9,zl); }
     }
     /* lamp posts on the open platform ends */
@@ -1945,8 +1957,37 @@ function gangGeo(){
 }
 const TRAIN_FRAG=`
 uniform float uNight;
-varying vec3 vLoc; varying vec3 vLN; varying float vSeed; varying vec3 vLiv; varying float vRoute; varying float vHead; varying float vVD; varying float vDoor;
+varying vec3 vLoc; varying vec3 vLN; varying float vSeed; varying vec3 vLiv; varying float vRoute; varying float vHead; varying float vVD; varying float vDoor; varying vec3 vVL; varying float vPh;
 float tH(float n){ return fract(sin(n)*43758.5453); }
+float tRR(vec2 p,vec2 b,float r){ vec2 q=abs(p)-b+r; return length(max(q,0.0))+min(max(q.x,q.y),0.0)-r; }
+vec4 tCabin(vec3 p,vec3 d,float s,float sd,float nt){ // rgb = lit cabin albedo, a = far-window (outside) coverage
+  d.x=s*min(s*d.x,-0.06);
+  float tw=(-s*2.25-p.x)/d.x, tc=d.y>0.001?(2.05-p.y)/d.y:1e4, tf=d.y<-0.001?(-1.85-p.y)/d.y:1e4, te=abs(d.z)>0.001?(sign(d.z)*(HZ-0.35)-p.z)/d.z:1e4;
+  float tm=min(min(tw,te),min(tc,tf)); vec3 h=p+d*tm; vec3 c; float o=0.0;
+  if(tm==tc) c=vec3(0.5)+vec3(0.5)*(1.0-smoothstep(0.1,0.16,abs(abs(h.x)-1.15)));
+  else if(tm==tf) c=vec3(0.14,0.15,0.17)*(1.0+0.4*step(abs(h.x),0.6));
+  else if(tm==te) c=vec3(0.4,0.41,0.44)*(1.0-0.6*step(abs(h.x),0.5)*step(h.y,0.9));
+  else { o=step(-0.45,h.y)*step(h.y,1.12)*step(abs(fract((h.z+HZ)/1.6)-0.5)*1.6,0.6); c=mix(vec3(0.4,0.41,0.45),vec3(0.07,0.32,0.4),step(-1.45,h.y)*step(h.y,-0.6)); c*=1.0-o; }
+  c*=0.55+0.45*smoothstep(-1.85,2.0,h.y);
+#ifdef TLITE
+  for(int k=0;k<2;k++){
+#else
+  for(int k=0;k<3;k++){
+#endif
+    float fk=float(k), lx=k==0?1.5:k==1?0.0:-1.5, tl=(s*lx-p.x)/d.x; if(tl<0.0||tl>tm) continue;
+    vec3 q=p+d*tl; if(k!=1&&abs(abs(q.z)-HZ*0.5)<0.95) continue; float cw=k==1?1.4:0.8, u=q.z/cw+sd*7.0+fk*0.37, ci=floor(u), cf=(fract(u)-0.5)*cw+0.12*(tH(ci+sd*3.0)-0.5);
+    if(k==1&&abs(abs(q.z)-HZ*0.5)>0.9&&abs(abs(abs(q.z)-HZ*0.5)-1.6)<0.03){ c=vec3(0.75,0.76,0.8)*(0.6+0.4*smoothstep(-1.85,2.0,q.y)); o=0.0; tm=tl; continue; } // grab poles
+    float occ=step(tH(ci*7.13+fk*31.7+sd*91.3),k==1?0.32:0.55), hy=k==1?-0.2+0.12*tH(ci*1.7+sd):-0.62;
+    vec2 hp=vec2(cf,q.y-hy);
+    float hd=1.0-smoothstep(0.1,0.14,length(hp*vec2(1.0,0.85)));
+    float to=(1.0-smoothstep(0.17,0.24,abs(hp.x)+max(0.0,hp.y+0.25)*0.9))*step(hp.y,-0.13)*step(k==1?-1.7:-0.9,hp.y);
+    float a=clamp(hd+to,0.0,1.0)*occ; if(a<0.01) continue;
+    vec3 pc=mix(mix(vec3(0.08,0.09,0.12),vec3(0.38,0.3,0.42),tH(ci*5.3+fk)),vec3(0.5,0.36,0.28)*(0.6+0.6*tH(ci*2.9)),hd);
+    pc*=0.45+0.45*smoothstep(-1.85,0.2,q.y);
+    c=mix(c,pc,a); o*=1.0-a; tm=mix(tm,tl,step(0.5,a));
+  }
+  return vec4(c,o);
+}
 float tBox(vec2 p,vec2 a,vec2 b){ return step(a.x,p.x)*step(p.x,b.x)*step(a.y,p.y)*step(p.y,b.y); }
 float tBit(float m,float s){ return mod(floor(m/pow(2.0,s)+0.001),2.0); }
 float tSeg(vec2 p,float d){
@@ -1965,31 +2006,33 @@ float tSide=smoothstep(0.55,0.75,abs(vLN.x))*step(2.2,abs(tX));
 float tNotFlat=1.0-smoothstep(0.75,0.9,abs(vLN.y));
 float tEnd=1.0-step(HZ-0.8,abs(tZ));
 float tDz=abs(abs(tZ)-HZ*0.5);
+// M-028: gangway passage, an end-door-sized hole in every end cap (hidden from outside by the bellows; walked through when riding)
+if(abs(vLN.z)>0.8&&abs(tX)<0.47&&tY>-1.86&&tY<0.76&&abs(tZ)>HZ-0.4) discard;
 #ifdef NOSE
   float zt=HZ-NOSE_L, tT=clamp((tZ-zt)/NOSE_L,0.0,1.0);
   tEnd=(1.0-step(HZ-0.8,-tZ))*(1.0-smoothstep(zt-1.0,zt-0.4,tZ));
   tDz=abs(tZ+HZ*0.5);
 #endif
-float tBand=smoothstep(-0.14,-0.1,tY)*(1.0-smoothstep(1.2,1.24,tY))*tSide*tEnd;
+float tBand=smoothstep(-0.49,-0.45,tY)*(1.0-smoothstep(1.2,1.24,tY))*tSide*tEnd;
 float tMz=fract((tZ+HZ)/1.6);
 float tDoorA=step(tDz,0.85)*step(-1.9,tY)*step(tY,1.5)*tSide;
 float tDoorIn=step(tDz,0.77)*step(-1.82,tY)*step(tY,1.42);
 float tDoorLine=tDoorA*(1.0-tDoorIn)*tNear;
 float tSeam=tDoorA*(1.0-step(0.03,tDz))*tNear;
 float tDoorLamp=step(tDz,0.3)*step(1.56,tY)*step(tY,1.72)*tSide*tEnd;
-float tMull=(1.0-smoothstep(0.035,0.06,tMz)*(1.0-smoothstep(0.94,0.965,tMz)))*tNear*(1.0-tDoorA);
-float tWin=tBand*(1.0-tMull)*(1.0-tDoorLine)*(1.0-tSeam);
-// M-025: platform-side door leaves slide apart while docked (vDoor = open amount, signed by the platform's local-x side)
-float tDO=abs(vDoor), tDS=step(0.0001,tX*vDoor);
+// M-028: rounded-corner panes (sill 1.4 m above the floor) in a dark gasket, body-colour pillars between them, a glazed
+// panel in each door leaf; past ~200 m the band fades to one continuous glass strip. Leaves slide apart while docked.
+float tLed=floor(abs(vDoor)*0.5), tDO=abs(vDoor)-2.0*tLed, tDS=step(0.0001,tX*vDoor);
+float tAA=clamp(vVD*0.0016,0.006,0.06), tDzA=step(tDz,0.85);
+float tWd=tRR(vec2((tMz-0.5)*1.6,tY-0.335),vec2(0.6,0.785),0.22);
+float tLz=tDz-0.76*tDO*tDS, tLeaf=step(tDz,0.77)*step(0.0,tLz)*tSide*tEnd;
+float tDd=tRR(vec2(tLz-0.4,tY-0.335),vec2(0.25,0.785),0.15);
+float tPane=(1.0-tDzA)*tBand*(1.0-smoothstep(-tAA,tAA,tWd))+tDzA*tLeaf*(1.0-smoothstep(-tAA,tAA,tDd));
+float tMull=tNear*((1.0-tDzA)*tBand*smoothstep(-tAA,tAA,tWd)*(1.0-smoothstep(0.05-tAA,0.05+tAA,tWd))+tDzA*tLeaf*smoothstep(-tAA,tAA,tDd)*(1.0-smoothstep(0.045-tAA,0.045+tAA,tDd)));
+float tRev=tNear*tPane*(1.0-smoothstep(-0.06,-0.04,min(tWd,mix(tWd,tDd,tDzA))))*step(0.335,tY); // inset lip shadow under the top edge
+float tWin=mix(tBand*(1.0-tDoorLine)*(1.0-tSeam),tPane,tNear);
 float tGap=step(tDz,0.76*tDO)*tDoorIn*tSide*tDS;
 tWin*=1.0-tGap;
-float tSi=floor((tZ+HZ)/0.92), tSf=fract((tZ+HZ)/0.92)-0.5, tSd=step(0.0,tX);
-float tOcc=step(tH(tSi*7.13+tSd*31.7+vSeed*91.3),0.34+0.32*tH(vSeed*5.1));
-float tHy=0.48+0.3*step(0.72,tH(tSi*3.1+vSeed*17.0+tSd*5.3));
-vec2 tHp=vec2(tSf*0.92+0.14*(tH(tSi+vSeed*3.0)-0.5),tY-tHy);
-float tHead=1.0-smoothstep(0.13,0.16,length(tHp*vec2(1.0,0.82)));
-float tTorso=(1.0-smoothstep(0.2,0.25,abs(tHp.x)+max(0.0,tHp.y+0.24)*0.9))*step(tHp.y,-0.12);
-float tSil=clamp(tHead+tTorso,0.0,1.0)*tOcc*tWin*tNear;
 float tLiv=smoothstep(-1.1,-1.07,tY)*(1.0-smoothstep(-0.8,-0.77,tY))*tNotFlat;
 float tPin=smoothstep(-1.34,-1.32,tY)*(1.0-smoothstep(-1.27,-1.25,tY))*tNotFlat*tNear;
 float tTx=-tZ*sign(tX);
@@ -2005,40 +2048,51 @@ float tWs=0.0, tLamp=0.0;
   tLiv*=1.0-smoothstep(0.86,0.9,tT); tSkirt*=1.0-tLamp;
 #endif
 float tGlass=clamp(tWin+tWs,0.0,1.0);
-diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.09,0.1,0.12),clamp(tMull*tBand+tDoorLine+tSeam+tPin,0.0,1.0));
+diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.09,0.1,0.12),clamp(tMull+tDoorLine+tSeam+tPin,0.0,1.0));
 diffuseColor.rgb=mix(diffuseColor.rgb,vLiv*0.75,tLiv);
 diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.06,0.065,0.075),tSkirt);
 diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.42,0.45,0.5),tRoof);
 diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.12),tDig);
-diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.012,0.018,0.03),tGlass);
+diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.1,0.12,0.15)*(1.0-0.6*tRev),tGlass); // M-028: smoked glass = tinted mirror (metalness 1) over the lit cabin
 diffuseColor.rgb=mix(diffuseColor.rgb,vec3(1.0),tLamp);
 diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.06,0.055,0.05),tGap);`;
 const TRAIN_EMIT=`
-vec3 tIn=mix(vec3(1.0,0.7,0.4),vec3(0.5,0.78,1.0),step(0.5,tH(vSeed*13.7)));
-float tSeatB=(1.0-smoothstep(0.12,0.16,tY))*0.6, tRail=step(0.96,tY)*step(tY,1.0)*tNear*0.7, tCeilL=smoothstep(1.06,1.1,tY);
-totalEmissiveRadiance+=tIn*tWin*(1.0-0.9*tSil)*(1.0-tSeatB)*(1.0-tRail)*(0.55+0.35*smoothstep(0.2,1.0,tY)+1.2*tCeilL)*(0.04+0.8*uNight);
+vec3 tIn=mix(vec3(1.0,0.78,0.55),vec3(0.78,0.9,1.0),step(0.5,tH(vSeed*13.7)));
+// M-028: interior mapping. The view ray (car-local) continues through the pane into a box cabin: far wall with its own
+// windows and seat row, ceiling light strips, floor, end walls and passengers on three depth planes. Fresnel trades the
+// cabin for the env reflection at grazing angles; a soft streak slides over the glass as the car moves.
+if(tWin+tGap>0.001){ // open door gaps look straight into the same cabin (no glass)
+  vec3 tV=normalize(vVL); float tS=sign(tX);
+  float tF=0.04+0.96*pow(1.0-abs(dot(normalize(vLN),tV)),4.0);
+  vec4 tCb=tCabin(vLoc,tV,tS,vSeed,uNight);
+  float tLvl=mix(0.16,0.72,uNight); vec3 tR=reflect(tV,normalize(vLN));
+  totalEmissiveRadiance+=(tIn*tCb.rgb*tLvl+tCb.a*mix(vec3(0.3,0.36,0.44),vec3(0.03,0.03,0.07),uNight))*(vec3(0.88,0.92,0.96)*(1.0-tF)*tWin*(1.0-0.5*tRev)+tGap);
+  totalEmissiveRadiance+=(1.0-uNight)*mix(vec3(0.5,0.56,0.62),vec3(0.26,0.36,0.52),clamp(tR.y*1.5,0.0,1.0))*(0.16+0.6*tF)*tWin; // daylight sky in the glass
+  float tSk=fract((tZ-tY*0.7+vPh)*0.11);
+  totalEmissiveRadiance+=mix(vec3(0.8,0.88,1.0)*0.16,vec3(0.6,0.45,0.9)*0.05,uNight)*(smoothstep(0.0,0.05,tSk)*(1.0-smoothstep(0.05,0.2,tSk))+0.4*smoothstep(0.55,0.58,tSk)*(1.0-smoothstep(0.58,0.62,tSk)))*(0.5+tF)*tWin*tNear;
+}
 totalEmissiveRadiance+=vLiv*tLiv*(0.15+1.6*uNight);
 totalEmissiveRadiance+=vec3(0.3,0.95,1.0)*tGlowS*(0.4+2.4*uNight);
 totalEmissiveRadiance+=vLiv*tDig*(0.4+1.6*uNight);
 totalEmissiveRadiance+=mix(vec3(0.35,1.0,0.55),vec3(1.0,0.62,0.14),step(0.005,tDO)*tDS)*tDoorLamp*(0.3+1.6*uNight);
-totalEmissiveRadiance+=vec3(1.0,0.82,0.58)*tGap*(0.1+0.32*uNight)*(0.2+0.8*smoothstep(-1.9,1.4,tY))*(1.0-0.6*step(0.66*tDO,tDz));
+totalEmissiveRadiance+=(step(0.5,tLed)*step(tLed,1.5)*vec3(0.1,0.82,0.36)+step(1.5,tLed)*vec3(0.86,0.08,0.06))*tDoorLine*tDS; // M-028 door LED strip (jambs + header)
 #ifdef NOSE
 totalEmissiveRadiance+=mix(vec3(1.0,0.05,0.03)*1.8,vec3(1.0,0.96,0.88)*2.8,vHead)*tLamp*(0.8+1.4*uNight);
 totalEmissiveRadiance+=vec3(0.15,0.55,0.75)*tWs*0.2*uNight*smoothstep(-0.2,0.6,tY);
 #endif`;
 function trainMat(nose){
   const m=new THREE.MeshStandardMaterial({color:C(0xeef2f7),roughness:0.28,metalness:0.35,envMapIntensity:1.3});
-  m.defines={HZ:HZ.toFixed(3),NOSE_L:NOSE_L.toFixed(2)}; if(nose) m.defines.NOSE='';
+  m.defines={HZ:HZ.toFixed(3),NOSE_L:NOSE_L.toFixed(2)}; if(nose) m.defines.NOSE=''; if(isMobile) m.defines.TLITE='';
   m.onBeforeCompile=sh=>{
     sh.uniforms.uNight=uNight;
     sh.vertexShader=sh.vertexShader.replace('#include <common>',`#include <common>
 attribute float aSeed; attribute vec3 aLiv; attribute float aRoute; attribute float aHead; attribute float aDoor;
-varying vec3 vLoc; varying vec3 vLN; varying float vSeed; varying vec3 vLiv; varying float vRoute; varying float vHead; varying float vVD; varying float vDoor;`)
+varying vec3 vLoc; varying vec3 vLN; varying float vSeed; varying vec3 vLiv; varying float vRoute; varying float vHead; varying float vVD; varying float vDoor; varying vec3 vVL; varying float vPh;`)
       .replace('#include <begin_vertex>','#include <begin_vertex>\nvLoc=transformed; vLN=objectNormal; vSeed=aSeed; vLiv=aLiv; vRoute=aRoute; vHead=aHead; vDoor=aDoor;')
-      .replace('#include <project_vertex>','#include <project_vertex>\nvVD=-mvPosition.z;');
+      .replace('#include <project_vertex>','#include <project_vertex>\nvVD=-mvPosition.z;\n{ vec3 tc=cameraPosition-instanceMatrix[3].xyz; vVL=transformed-vec3(dot(tc,instanceMatrix[0].xyz),dot(tc,instanceMatrix[1].xyz),dot(tc,instanceMatrix[2].xyz)); vPh=(instanceMatrix[3].x+instanceMatrix[3].z)*0.7; }');
     sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\n'+TRAIN_FRAG)
       .replace('#include <color_fragment>','#include <color_fragment>\n'+TRAIN_MASKS)
-      .replace('#include <metalnessmap_fragment>','#include <metalnessmap_fragment>\nroughnessFactor=mix(mix(roughnessFactor,0.65,tSkirt),0.06,tGlass); metalnessFactor=mix(metalnessFactor,0.92,tGlass);')
+      .replace('#include <metalnessmap_fragment>','#include <metalnessmap_fragment>\nroughnessFactor=mix(mix(roughnessFactor,0.65,tSkirt),0.04,tGlass); metalnessFactor=mix(metalnessFactor,1.0,tGlass);')
       .replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\n'+TRAIN_EMIT);
   };
   return m;
@@ -2064,7 +2118,7 @@ const _p=new THREE.Vector3(), _q=new THREE.Vector3(), _pp=new THREE.Vector3();
    trainCarPose(t,i,outPos,outQuat): car i of train t (0 = front), body centre (floor = pos.y-1.85, = ST_Y when docked) and
    rotation with +z pointing in the direction of travel; returns the local-x sign of the platform side (+1/-1). */
 const TR_V=0.006*LOOP_L, TR_A=2.4, TR_DWELL=8;
-const trainState=[0,1].map(t=>({u:t?0.56:0.06,speed:TR_V,atStation:-1,dwell:0,dir:t?-1:1,next:-1,door:0}));
+const trainState=[0,1].map(t=>({u:t?0.56:0.06,speed:TR_V,atStation:-1,dwell:0,dir:t?-1:1,next:-1,door:0,ext:0,recyc:0,rop:false,led:0}));
 const stAhead=(S,k)=>((((S.dir>0?STATIONS[k].u-S.u:S.u-STATIONS[k].u)%1)+1)%1)*LOOP_L;
 function nextStation(S,minD){ let best=-1, bd=1e9; for(let k=0;k<STATIONS.length;k++){ const d=stAhead(S,k); if(d>minD&&d<bd){ bd=d; best=k; } } return best; }
 trainState.forEach(S=>{ S.next=nextStation(S,TR_V*TR_V/(2*TR_A)+10); });
@@ -2084,15 +2138,36 @@ function updateStations(){
     dummy.updateMatrix(); stCabins.setMatrixAt(i,dummy.matrix); });
     stCabins.instanceMatrix.needsUpdate=true; stCabins.material.emissiveIntensity=0.25+0.45*n; }
 }
+/* M-028: is the officer (or a robot) standing in a platform-side doorway of train t? (recycles the closing doors) */
+const _db=new THREE.Vector3(), _dq=new THREE.Quaternion(), _dp=new THREE.Vector3();
+function doorBlocked(t){
+  if(typeof hunt==='undefined'||!hunt.on) return false;
+  if(ride.on&&ride.t===t&&ride.lx*ride.side>1.6&&CAB_DC.some(c=>Math.abs(ride.lz-c)<0.7)) return true;
+  const pts=[]; if(foot.on&&!ride.on) pts.push(foot.pos); units.forEach(u=>{ if(u.plat&&u.alive) pts.push(u.c); });
+  for(const P of pts) for(let i=1;i<TRAIN-1;i++){ const sd=trainCarPose(t,i,_dp,_dq); if(_dp.distanceToSquared(P)>HZ*HZ+40) continue;
+    _db.copy(P).sub(_dp).applyQuaternion(_dq.invert()); const x=_db.x*sd; if(x>1.4&&x<ST_E0+0.7&&Math.abs(Math.abs(_db.z)-HZ/2)<0.8&&Math.abs(_db.y+1.85)<1) return true; }
+  return false;
+}
+function doorChime(t){ if(typeof hunt==='undefined'||!hunt.on) return; const P=ride.on?null:foot.pos; if(!(ride.on&&ride.t===t)&&!(P&&trainCarPose(t,TRAIN>>1,_dp,null)!==undefined&&_dp.distanceTo(P)<90)) return;
+  beep(784,784,0.16,'sine',0.045); setTimeout(()=>beep(587,587,0.26,'sine',0.045),210); }
 function updateTrains(dt){
   for(let t=0;t<2;t++){ const S=trainState[t];
     if(S.atStation>=0){
-      S.dwell-=dt; const el=TR_DWELL-S.dwell; S.door=Math.max(0,Math.min(1,(el-0.6)/1.1,(S.dwell-0.4)/1.3));
-      if(S.dwell<=0){ S.atStation=-1; S.dwell=0; S.door=0; S.speed=0; S.next=nextStation(S,1); }
+      /* M-028 door cycle (owner's video): open ~0.6-1.7 s after arrival (LED green); red 2 Hz warning from dwell 2.8 s; leaves
+         close over 1.5 s (fast, easing in, ~1.5 cm bump) ending at dwell 0.3 s; strip dark once closed. Something in a doorway
+         while closing recycles: reopen (green), then warn + close again; at most 2 recycles. S.ext = dwell extension (s). */
+      S.dwell-=dt; const el=TR_DWELL+S.ext-S.dwell, p=(1.8-S.dwell)/1.5, wasRed=S.led===2;
+      let d=Math.max(0,Math.min(1,(el-0.6)/1.1));
+      if(S.rop){ d=Math.min(1,S.door+dt/0.5); if(d>=1) S.rop=false; }
+      else if(p>0){ const q=Math.min(1,p); d=(1-q)*(1-q)-0.03*Math.sin(Math.PI*Math.max(0,Math.min(1,(q-0.8)/0.2)));
+        if(q<0.95&&S.recyc<2&&doorBlocked(t)){ S.recyc++; S.ext+=3.8-S.dwell; S.dwell=3.8; S.rop=true; d=S.door; } }
+      S.door=d; S.led=S.rop?1:S.dwell<2.8&&p<1?2:d>0.05?1:0; S.redOn=(((2.8-S.dwell)%0.5)+0.5)%0.5<0.25; /* 2 Hz flash */
+      if(S.led===2&&!wasRed) doorChime(t);
+      if(S.dwell<=0){ S.atStation=-1; S.dwell=0; S.door=0; S.speed=0; S.ext=0; S.recyc=0; S.rop=false; S.led=0; S.next=nextStation(S,1); }
     } else {
       if(S.next<0) S.next=nextStation(S,1);
       const d=stAhead(S,S.next), v=Math.min(S.speed+TR_A*dt,TR_V,Math.sqrt(2*TR_A*d)), step=v*dt;
-      if(d-step<0.05){ S.u=STATIONS[S.next].u; S.speed=0; S.atStation=S.next; S.dwell=TR_DWELL; S.door=0; }
+      if(d-step<0.05){ S.u=STATIONS[S.next].u; S.speed=0; S.atStation=S.next; S.dwell=TR_DWELL; S.door=0; S.ext=0; S.recyc=0; S.rop=false; S.led=0; }
       else { S.u=(((S.u+S.dir*step/LOOP_L)%1)+1)%1; S.speed=v; }
     }
   }
@@ -2106,7 +2181,9 @@ function updateTrains(dt){
       if(flip) dummy.rotateY(Math.PI); // nose tips point away from the train
       dummy.updateMatrix();
       // platform (inland, +side) is local -x for unflipped cars; aDoor = open amount signed by the platform's local-x side
-      if(nose){ doorNose[kn]=S.door*(flip?1:-1); noseMesh.setMatrixAt(kn++,dummy.matrix); } else { doorMid[kb]=-S.door; trainMesh.setMatrixAt(kb++,dummy.matrix); }
+      /* aDoor = platform-side sign * (open 0..0.999 + 2*LED: 1 green, 2 red; the red flashes at 2 Hz) */
+      const dv=Math.min(0.999,Math.max(0,S.door))+2*(S.led===2?(S.redOn?2:0):S.led);
+      if(nose){ doorNose[kn]=dv*(flip?1:-1); noseMesh.setMatrixAt(kn++,dummy.matrix); } else { doorMid[kb]=-dv; trainMesh.setMatrixAt(kb++,dummy.matrix); }
       if(i>0){ dummy.position.set((_p.x+_pp.x)/2,(_p.y+_pp.y)/2+4.4,(_p.z+_pp.z)/2); dummy.lookAt(_p.x,_p.y+4.4,_p.z); dummy.updateMatrix(); gangMesh.setMatrixAt(kg++,dummy.matrix); }
       _pp.copy(_p);
       ta[k*3]=_p.x; ta[k*3+1]=_p.y+4.4; ta[k*3+2]=_p.z; k++;
@@ -2117,7 +2194,7 @@ function updateTrains(dt){
   trainPts.geometry.attributes.position.needsUpdate=true;
   updateStations();
 }
-window.__stations={STATIONS,trainState,stationGroundAt,trainCarPose}; // debug hook for tools/shot.js (read-only use)
+window.__stations={STATIONS,trainState,stationGroundAt,trainCarPose,ST_BENCH}; // debug hook for tools/shot.js (read-only use)
 
 /* ---------- traffic: ground pods + flying cars ---------- */
 const cars=[];
@@ -3391,7 +3468,7 @@ function awayDir(u,hp){ const s0=u.s; u.s=((s0+3)%u.P+u.P)%u.P; perim(u); const 
   return a>=b?1:-1; }
 const _hbv=new THREE.Vector3();
 function updateBot(u,dt,t,hp,k){
-  let trYaw=0; if(u.tr) trYaw=trainLocal(u.tr.t,u.tr.i,u.tr.lx,-1.85,u.tr.lz,u.c);
+  let trYaw=0; if(u.tr&&u.stun<0) trFlee(u,dt); /* M-028 */ if(u.tr) trYaw=trainLocal(u.tr.t,u.tr.i,u.tr.lx,-1.85,u.tr.lz,u.c);
   const dH=Math.hypot(u.c.x-hp.x,u.c.z-hp.z)+Math.abs(u.c.y-hp.y)*0.5;
   let spd=0, lean=0, sink=0, aL=0, aR=0, hRx=0, hRy=0, legA=0.45, vis=u.vis, sc=1;
   if(u.stun>=0){
@@ -3409,6 +3486,7 @@ function updateBot(u,dt,t,hp,k){
       if(alarm) u.dir=P.al>(hp.x-S.track.x)*S.along.x+(hp.z-S.track.z)*S.along.z?1:-1;
       P.al+=u.dir*spd*dt; if(P.al>lim){ P.al=lim; u.dir=-1; } if(P.al<-lim){ P.al=-lim; u.dir=1; }
       want=Math.atan2(S.along.x*u.dir,S.along.z*u.dir); }
+    else if(u.trSp>0.05){ spd=u.trSp; want=trYaw+(u.tr.dz>0?0:Math.PI); } /* M-028: rogue moving away down the train */
     else { want=trYaw+u.tr.ry+(u.rogue?0.25*Math.sin(t*0.7+u.ph):0); if(u.rogue&&!u.scanned&&Math.sin(t*0.9+u.ph)>0.6){ aL=aR=-1.35+0.25*Math.sin(t*14); } }
     if(u.plat){ const P=u.plat, S=P.S; u.c.set(S.track.x+S.along.x*P.al+S.side.x*P.ac,ST_Y,S.track.z+S.along.z*P.al+S.side.z*P.ac); }
     let dy=want-u.yaw; dy=Math.atan2(Math.sin(dy),Math.cos(dy)); u.yaw+=dy*Math.min(1,dt*8);
@@ -3483,7 +3561,7 @@ function spawnStationBot(rogue,S,tr){
   const role=ROLES[Math.floor(Math.random()*ROLES.length)];
   const u={kind:'bot',rogue,role,id:newId(rogue),seq:unitSeq++,alive:true,scanned:false,c:new THREE.Vector3(),yaw:0,cyc:Math.random()*6,ph:Math.random()*6,state:'walk',stT:mr(2,6),flkT:mr(1,3),flk:0,stun:-1,greet:0,
     dir:Math.random()<0.5?1:-1,sp:mr(0.9,1.3),mk:null,vis:Math.random()<0.5?VIS_CYAN:VIS_GREEN,roof:null,sc:1};
-  if(tr) u.tr={t:tr.t,i:1+Math.floor(Math.random()*(TRAIN-2)),lx:mr(-1.3,1.3),lz:mr(-HZ+1.5,HZ-1.5),ry:Math.random()<0.5?Math.PI/2:-Math.PI/2};
+  if(tr) u.tr={t:tr.t,i:tr.i||1+Math.floor(Math.random()*(TRAIN-2)),lx:mr(-1.3,1.3),lz:mr(-HZ+1.5,HZ-1.5),ry:Math.random()<0.5?Math.PI/2:-Math.PI/2};
   else u.plat={S,al:mr(-0.3,0.3)*S.len,ac:mr(ST_E0+2.2,ST_E1-1.6)};
   units.push(u); return u;
 }
@@ -3611,6 +3689,7 @@ function updateFoot(dt,t){
   const ok=(x,z)=>!solidAt(x,p.y+1.0,z,0.4)&&(p.y>0.5||(Math.abs(x)<=halfW(z)+15&&z>-1470&&z<1600));
   if(ok(p.x+dx,p.z)) p.x+=dx; if(ok(p.x,p.z+dz)) p.z+=dz;
   { const cx=p.x-drive.pos.x, cz=p.z-drive.pos.z, d=Math.hypot(cx,cz); if(d<2.6&&d>0.01&&Math.abs(p.y-drive.pos.y)<2){ p.x=drive.pos.x+cx/d*2.6; p.z=drive.pos.z+cz/d*2.6; } }
+  if(walkBoard()) return; /* M-028: stepping through an open train door boards it */
   const g=groundAt(p.x,p.z,p.y);
   if(p.y>g+0.02){ if(p.y-g>3&&foot.vy===0) pop('Whoa, jumping down!'); foot.vy=Math.max(-55,foot.vy-26*dt); p.y=Math.max(g,p.y+foot.vy*dt); if(p.y===g) foot.vy=0; }
   else { p.y=g; foot.vy=0; }
@@ -3637,37 +3716,193 @@ function updateFoot(dt,t){
 }
 /* ---- M-026 ride the train: station elevators, boarding, riding (window or outside view), getting off ----
    Read-only use of the M-025 API (STATIONS, stationGroundAt, trainState, trainCarPose, nextStation, stAhead).
-   The car interior is one InstancedMesh of boxes (1 draw call), built on the first boarding and shown only while riding. */
-const ride={on:false,t:0,i:0,lx:0,lz:0,ly:0,wy:0,side:1,view:0,int:null,act:null,actKey:''};
+   M-028: the cabin (cab, 4 draw calls) is built on the first boarding and shown only while riding; walk-on boarding via walkBoard(). */
+const ride={on:false,t:0,i:0,lx:0,lz:0,ly:0,wy:0,side:1,view:0,act:null,actKey:''};
 const lift={T:0,S:null,up:false,done:false};
 const actBtn=document.getElementById('actBtn'), rideHud=document.getElementById('rideHud'), fadeEl=document.getElementById('fadeFx');
-const KEYS_RIDE='<span>Drag or A D: look</span> · <span>W S: walk in the car</span> · <span>V: window / outside view</span> · <span>Q (hold): scan</span> · <span>Space: detain</span> · <span>E: get off when the doors open</span>';
+const KEYS_RIDE='<span>Drag or A D: look</span> · <span>W S: walk in the car</span> · <span>V: cabin / window / outside view</span> · <span>Q (hold): scan</span> · <span>Space: detain</span> · <span>E or walk out: get off when the doors open</span>';
 const _rp=new THREE.Vector3(), _rq=new THREE.Quaternion(), _rv=new THREE.Vector3(), _rw=new THREE.Vector3();
 /* car-local point (x, y from the body centre, z) of car i of train t -> world (out); returns the car's world yaw */
 function trainLocal(t,i,x,y,z,out){ trainCarPose(t,i,_rp,_rq); out.set(x,y,z).applyQuaternion(_rq).add(_rp); _rw.set(0,0,1).applyQuaternion(_rq); return Math.atan2(_rw.x,_rw.z); }
+const CAB_L=CL-0.4, CAB_DC=[-HZ/2,HZ/2], CAB_H2=CAB_L/2;
+const CAB_PANES=(()=>{ const P=[]; for(let zc=-HZ+0.8;zc<HZ;zc+=1.6){ if(Math.abs(Math.abs(zc)-HZ/2)<1.45) continue; const z0=Math.max(zc-0.6,-(HZ-0.8)), z1=Math.min(zc+0.6,HZ-0.8); if(z1-z0>0.3) P.push([z0,z1]); } return P; })();
+/* M-028 cabin, modelled on the owner's subway-car photos (2140 refresh): brushed stainless door leaves with rounded windows,
+   gaskets, rivets and label strips; stainless frames, grab bars, number tags and red indicator lights; yellow door pads with
+   arrows; navy speckled floor; white laminate walls with stainless kick plates and a thin cyan accent; knee-high cabinets with
+   perforated fronts; emergency panels; light-grey ceiling with fluorescent strips, vent grilles and "Next" screens; blue bucket
+   benches with stainless partitions; stainless storm doors (rounded window, lever, red octagon sign) and a gangway to the next car.
+   One Group re-posed to whichever car the officer is in (walking through the end doors switches car). Children = 4 draw calls:
+   boxes (unlit; a per-instance kind selects a procedural finish), glass panes, riders, screens. Built on the first boarding. */
+const cabU={uNight}, cab={led:[],g:null,box:null,glass:null,rid:null,disp:null,ctx:null,tex:null,txt:'',leaf:[],lamp:[],emis:[],endD:[],hideE:[],k:-1,endO:[0,0],seat:[],ri:-1};
+const CAB_KIND=`
+float kH(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float kRR(vec2 p,vec2 b,float r){ vec2 q=abs(p)-b+r; return length(max(q,0.0))+min(max(q.x,q.y),0.0)-r; }`;
+function cabMat(){
+  const m=new THREE.MeshBasicMaterial({color:0xffffff,vertexColors:true});
+  m.onBeforeCompile=sh=>{
+    sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nattribute float aKind; varying float vK; varying vec3 vB; varying vec3 vNo; varying float vSh;')
+      .replace('#include <begin_vertex>','#include <begin_vertex>\nvK=aKind; vNo=normal; vSh=color.r; vB=position*vec3(length(instanceMatrix[0].xyz),length(instanceMatrix[1].xyz),length(instanceMatrix[2].xyz));');
+    sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying float vK; varying vec3 vB; varying vec3 vNo; varying float vSh;'+CAB_KIND)
+      .replace('#include <color_fragment>',`#include <color_fragment>
+if(vK>0.5){
+  vec2 uv=abs(vNo.x)>0.5?vB.zy:abs(vNo.z)>0.5?vB.xy:vB.xz; float sh=0.42*vSh; vec3 c=diffuseColor.rgb/max(sh,0.001)/max(diffuse.r,0.001);
+  if(vK<1.5){ float h=kH(floor(uv*60.0)); c=vec3(0.07,0.09,0.2)*(0.9+0.2*kH(floor(uv*7.0))); if(h>0.975) c=vec3(1.0,0.78,0.2); else if(h>0.962) c=vec3(0.85); }
+  else if(vK<2.5){ c=vec3(0.7,0.72,0.75)*(0.9+0.1*kH(vec2(floor((uv.x+uv.y*0.02)*140.0),1.0)))*(0.94+0.08*smoothstep(-1.0,1.0,uv.y)); }
+  else if(vK<3.5){ c=vec3(0.42,0.43,0.45)*(1.0-0.45*step(length(fract(uv*45.0)-0.5),0.28)); }
+  else if(vK<4.5||vK>9.5){ /* door leaves: stainless, rounded window (hole), aluminium gasket + rivets, black label strip */
+    c=vec3(0.6,0.62,0.66)*(0.9+0.1*kH(vec2(floor(uv.x*140.0),3.0)));
+    float d=kRR(uv-vec2(0.0,0.55),vec2(0.22,0.74),0.17);
+    if(vK<4.5&&d<0.0&&abs(vNo.x)>0.5) discard;
+    if(vK>9.5&&d<0.0) c=vec3(0.95,0.9,0.8)*(0.75+0.25*kH(floor(uv*3.0)));
+    if(d>=0.0&&d<0.06){ c=vec3(0.86,0.88,0.9); if(abs(d-0.032)<0.01&&length(fract(uv*11.0)-0.5)<0.16) c=vec3(0.35); }
+    if(abs(uv.y+0.33)<0.028&&abs(uv.x)<0.17){ c=vec3(0.03); if(abs(uv.y+0.33)<0.007&&abs(uv.x)<0.13&&kH(vec2(floor(uv.x*160.0),5.0))>0.3) c=vec3(0.8); }
+  }
+  else if(vK<5.5){ /* yellow door pad (box rotated so +x faces the door), dark arrows pointing out */
+    if(kRR(uv,vec2(0.27,0.78),0.12)>0.0) discard;
+    c=vec3(0.95,0.72,0.08)*(0.92+0.08*kH(floor(uv*80.0)));
+    for(int i=0;i<3;i++){ vec2 p=uv-vec2(0.02,-0.5+0.5*float(i)); if((abs(p.x+abs(p.y)-0.06)<0.03&&abs(p.y)<0.11)||(abs(p.y)<0.022&&p.x<0.04&&p.x>-0.16)) c=vec3(0.05,0.06,0.12); }
+  }
+  else if(vK<6.5){ /* storm door: stainless, rounded window (hole), gasket, red octagon sign */
+    c=vec3(0.7,0.72,0.75)*(0.9+0.1*kH(vec2(floor(uv.x*140.0),7.0)));
+    float d=kRR(uv-vec2(0.0,0.55),vec2(0.2,0.5),0.18);
+    if(d<0.0&&abs(vNo.z)>0.5) discard;
+    if(d>=0.0&&d<0.06) c=vec3(0.86,0.88,0.9);
+    vec2 p=abs(uv-vec2(0.0,-0.25)); float o=max(max(p.x,p.y),(p.x+p.y)*0.7071);
+    if(o<0.17) c=o>0.155?vec3(0.9):(p.y<0.025&&p.x<0.1?vec3(0.9):vec3(0.72,0.06,0.06));
+  }
+  else if(vK<7.5){ c=vec3(0.03,0.035,0.045); vec2 g=vec2(floor(uv.x*130.0),floor(uv.y*70.0)); if(fract(uv.y*70.0)<0.4&&kH(g)>0.35) c=vec3(0.75); }
+  else if(vK<8.5){ c=vec3(0.75,0.76,0.78)*(fract(uv.x*28.0)<0.45?0.35:1.0); }
+  else if(vK<9.5){ float t=abs(fract(vB.z/0.48)-0.5)*2.0; c=vec3(0.1,0.24,0.62)*(0.82+0.3*t*t)*(t>0.94?0.6:1.0); }
+  diffuseColor.rgb=c*sh*diffuse;
+}`);
+  };
+  return m;
+}
 function buildInterior(){
-  if(ride.int) return ride.int;
+  if(cab.g) return cab.g;
+  const G=new THREE.Group(); G.visible=false; scene.add(G); cab.g=G;
   const g=new THREE.BoxGeometry(1,1,1), nm=g.attributes.normal, vc=new Float32Array(nm.count*3); /* baked face shading: unlit but readable */
   for(let i=0;i<nm.count;i++){ const y=nm.getY(i), k=y>0.5?1:y<-0.5?0.55:Math.abs(nm.getX(i))>0.5?0.8:0.68; vc[i*3]=vc[i*3+1]=vc[i*3+2]=k; }
   g.setAttribute('color',new THREE.BufferAttribute(vc,3));
-  const im=new THREE.InstancedMesh(g,new THREE.MeshBasicMaterial({color:0xffffff,vertexColors:true}),48);
-  im.setColorAt(0,new THREE.Color(1,1,1)); /* r128 sizes instanceColor from .count, so create it before count drops */
-  im.frustumCulled=false; im.visible=false; im.count=0; scene.add(im); ride.int=im; return im;
+  const NB=440, kinds=new Float32Array(NB); g.setAttribute('aKind',new THREE.InstancedBufferAttribute(kinds,1));
+  const im=new THREE.InstancedMesh(g,cabMat(),NB);
+  im.setColorAt(0,new THREE.Color(1,1,1)); im.frustumCulled=false; G.add(im); cab.box=im;
+  const m=new THREE.Matrix4(), q=new THREE.Quaternion(), col=new THREE.Color(), bp=new THREE.Vector3(), bs=new THREE.Vector3(), YA=new THREE.Vector3(0,1,0); let n=0;
+  /* night exposure is high: keep the cabin dim (x0.42); kind = procedural finish (see cabMat) */
+  const box=(x,y,z,w,h,d,c,kind,ry)=>{ q.setFromAxisAngle(YA,ry||0); m.compose(bp.set(x,y,z),q,bs.set(w,h,d)); im.setMatrixAt(n,m); im.setColorAt(n,col.setRGB(c[0]*0.42,c[1]*0.42,c[2]*0.42)); kinds[n]=kind||0; return n++; };
+  const L=CAB_L, H2=CAB_H2, dw=0.77, WL=[0.86,0.87,0.9], SS=[0.7,0.72,0.75], ST=2, GAP=PITCH-2*H2;
+  box(0,-1.9,0,4.6,0.1,L,WL,1);                                                       /* speckled floor */
+  box(0,2.15,0,4.4,0.1,L,[0.8,0.81,0.84]);                                             /* ceiling */
+  [-1.15,1.15].forEach(x=>cab.emis.push([box(x,2.09,0,0.26,0.03,L-1,[1,1,1]),[0.84,0.84,0.82]])); /* fluorescent strips */
+  [-H2+1.6,0,H2-1.6].forEach(z=>box(0,2.095,z,0.7,0.02,0.36,WL,8));                   /* vent grilles */
+  [-0.85,0.85].forEach(x=>{ box(x,1.86,0,0.04,0.04,L-1.2,SS,ST); for(let z=-H2+1;z<H2-0.8;z+=0.8) box(x,1.72,z,0.03,0.25,0.03,[0.25,0.26,0.3]); });
+  [-1,1].forEach(s=>{
+    box(s*2.25,1.63,0,0.1,1.02,L,WL);                                                  /* wall above the windows */
+    cab.emis.push([box(s*2.19,1.16,0,0.012,0.012,L-0.4,[1,1,1]),[0.08,0.62,0.78]]);   /* thin cyan accent */
+    const occ=CAB_PANES.concat(CAB_DC.map(c=>[c-dw-0.1,c+dw+0.1])).sort((a,b)=>a[0]-b[0]); let z=-H2;
+    occ.forEach(([a,b])=>{ if(a-z>0.02) box(s*2.25,0.335,(z+a)/2,0.1,1.57,a-z,WL); z=Math.max(z,b); }); if(H2-z>0.02) box(s*2.25,0.335,(z+H2)/2,0.1,1.57,H2-z,WL);
+    CAB_PANES.forEach(([a,b])=>{ const c=(a+b)/2, w=b-a;                               /* aluminium gaskets + sill */
+      box(s*2.2,1.11,c,0.06,0.05,w,SS,ST); box(s*2.2,-0.44,c,0.06,0.05,w,SS,ST); box(s*2.2,0.335,a+0.025,0.06,1.57,0.05,SS,ST); box(s*2.2,0.335,b-0.025,0.06,1.57,0.05,SS,ST);
+      box(s*2.12,-0.47,c,0.22,0.03,w,WL); });
+    /* seats: blue bucket benches between partitions; cabinets on the end side of each door */
+    const cab0=CAB_DC[0]-dw-0.12, cab1=CAB_DC[1]+dw+0.12;
+    const segs=[[-H2,cab0-0.74],[CAB_DC[0]+dw+0.1,CAB_DC[1]-dw-0.1],[cab1+0.74,H2]];
+    segs.forEach(([a,b],j)=>{ const c=(a+b)/2, d=b-a; box(s*2.27,-1.15,c,0.1,1.4,d,WL);  /* lower wall */
+      const sa=a+(j===0?0.1:0.25), sb=b-(j===2?0.1:0.25), sc=(sa+sb)/2, sd=sb-sa;
+      box(s*1.95,-1.4,sc,0.6,0.1,sd,[1,1,1],9); box(s*2.15,-0.98,sc,0.08,0.72,sd,[1,1,1],9);
+      box(s*2.0,-1.63,sc,0.42,0.44,sd,SS,ST); box(s*2.2,-1.75,c,0.03,0.2,d,SS,ST);       /* under-seat + kick plate */
+      [sa,sb].forEach((e,k)=>{ if((j===0&&k===0)||(j===2&&k===1)) return; const z2=e+(k?0.04:-0.04);
+        box(s*1.62,-1.15,z2,0.045,1.4,0.045,SS,ST); box(s*1.94,-0.5,z2,0.64,0.045,0.045,SS,ST); box(s*1.94,-0.95,z2,0.64,0.04,0.04,SS,ST); }); });
+    [[cab0-0.37,-1],[cab1+0.37,1]].forEach(([zc,e])=>{                                  /* equipment cabinet + signage above it */
+      box(s*2.27,-1.15,zc,0.1,1.4,0.76,WL); box(s*1.95,-1.48,zc,0.6,0.74,0.72,[0.93,0.94,0.95]); box(s*1.645,-1.5,zc,0.02,0.56,0.6,[1,1,1],3);
+      box(s*1.95,-1.105,zc,0.62,0.02,0.74,SS,ST); box(s*1.95,-1.8,zc,0.64,0.1,0.74,SS,ST);
+      box(s*2.195,-0.72,zc-e*0.1,0.01,0.26,0.36,[1,1,1],7); box(s*2.19,-0.66,zc+e*0.24,0.03,0.3,0.16,SS,ST); box(s*2.17,-0.6,zc+e*0.24,0.01,0.08,0.12,[1,1,1],7); });
+    CAB_DC.forEach(dc=>{
+      box(s*2.25,1.6,dc,0.12,0.36,dw*2+0.2,SS,ST);                                     /* door head */
+      [-1,1].forEach(k=>{ box(s*2.22,-0.2,dc+k*(dw+0.05),0.12,3.3,0.1,SS,ST);           /* stainless jambs + vertical grab bars */
+        box(s*2.06,-0.1,dc+k*(dw+0.2),0.04,1.5,0.04,SS,ST); box(s*2.13,0.62,dc+k*(dw+0.2),0.14,0.04,0.04,SS,ST); box(s*2.13,-0.82,dc+k*(dw+0.2),0.14,0.04,0.04,SS,ST); });
+      box(s*2.16,1.6,dc+dw+0.05,0.02,0.13,0.1,[1,1,1],7);                               /* door-number tag */
+      cab.lamp.push([box(s*2.16,1.6,dc-dw-0.05,0.03,0.06,0.06,[0.3,0.3,0.3]),s]);       /* red indicator light */
+      [-1,1].forEach(k=>cab.led.push([box(s*2.155,-0.22,dc+k*(dw+0.01),0.012,3.22,0.03,[0,0,0]),s])); cab.led.push([box(s*2.155,1.405,dc,0.012,0.03,dw*2+0.05,[0,0,0]),s]); /* LED door strip */
+      box(s*1.98,-1.845,dc,0.6,0.012,1.6,[1,1,1],5,s>0?0:Math.PI);                      /* yellow pad */
+      [-1,1].forEach(gs=>cab.leaf.push({s,dc,gs,i:box(0,0,0,1,1,1,[1,1,1],4)})); }); });
+  CAB_DC.concat([0]).forEach(z=>box(0,0.15,z,0.05,4.0,0.05,SS,ST));                  /* grab poles in the aisle */
+  /* end walls around a 0.9 m storm door, gangway to the neighbour's end door; a cab wall panel closes the nose ends */
+  [-1,1].forEach(e=>{ const z=e*H2, zn=e*(H2+GAP);
+    [-1,1].forEach(k=>box(k*1.4,0.15,z,1.8,4.1,0.1,WL)); box(0,1.45,z,1.0,1.4,0.1,WL);
+    [-1,1].forEach(k=>box(k*0.5,-0.55,z-e*0.06,0.06,2.6,0.06,SS,ST)); box(0,0.77,z-e*0.06,1.06,0.06,0.06,SS,ST);
+    box(0,-1.8,z-e*0.08,4.4,0.1,0.04,SS,ST); box(0.7,1.0,z-e*0.06,0.5,0.3,0.01,[1,1,1],7);
+    const dI=box(0,-0.55,z,0.9,2.6,0.05,[1,1,1],6), hI=box(0,-0.5,z-e*0.06,0.14,0.035,0.05,SS,ST);
+    const nI=box(0,-0.55,zn,0.9,2.6,0.05,[1,1,1],10), wI=[box(-0.85,0.15,zn,0.8,4.1,0.1,WL),box(0.85,0.15,zn,0.8,4.1,0.1,WL),box(0,1.45,zn,1.0,1.4,0.1,WL)];
+    const gw=[box(0,-1.88,e*(H2+GAP/2),1.1,0.04,GAP+0.1,[0.2,0.21,0.24]),box(-0.62,-0.4,e*(H2+GAP/2),0.04,3.0,GAP,[0.12,0.12,0.14]),box(0.62,-0.4,e*(H2+GAP/2),0.04,3.0,GAP,[0.12,0.12,0.14]),box(0,1.12,e*(H2+GAP/2),1.28,0.04,GAP,[0.2,0.2,0.22])];
+    const bd=[box(0,-1.9,zn+e*1.3,2.4,0.1,2.6,WL,1),box(-1.2,0.1,zn+e*1.3,0.1,4.0,2.6,WL),box(1.2,0.1,zn+e*1.3,0.1,4.0,2.6,WL),box(0,2.1,zn+e*1.3,2.4,0.1,2.6,[0.8,0.81,0.84]),box(0,0.1,zn+e*2.6,2.4,4.0,0.1,WL)]; /* glimpse of the next car */
+    const cw=box(0,-0.55,z-e*0.09,1.0,2.7,0.03,WL);                                    /* cab wall panel (nose side) */
+    cab.endD.push({e,z,zn,dI,hI,nI,wI,gw,cw,bd,bm:bd.map(i=>{ const M=new THREE.Matrix4(); im.getMatrixAt(i,M); return M; })}); });
+  cab.n=n; if(n>NB) console.warn("cabin boxes",n); im.count=n; im.instanceMatrix.needsUpdate=true; im.instanceColor.needsUpdate=true; g.attributes.aKind.needsUpdate=true;
+  /* glass: one instanced unit plane per pane (side windows, door leaves, storm doors) */
+  const gm=new THREE.ShaderMaterial({uniforms:cabU,transparent:true,depthWrite:false,side:THREE.DoubleSide,
+    vertexShader:`varying vec3 vW; varying vec3 vN; void main(){ vec4 w=modelMatrix*instanceMatrix*vec4(position,1.0); vW=w.xyz; vN=normalize(mat3(modelMatrix)*mat3(instanceMatrix)*normal); gl_Position=projectionMatrix*viewMatrix*w; }`,
+    fragmentShader:`uniform float uNight; varying vec3 vW; varying vec3 vN;
+void main(){ vec3 v=normalize(cameraPosition-vW); float F=0.04+0.96*pow(1.0-abs(dot(normalize(vN),v)),5.0);
+  float st=fract((vW.x+vW.z)*0.05+vW.y*0.04); st=smoothstep(0.0,0.08,st)*(1.0-smoothstep(0.08,0.3,st));
+  vec3 c=mix(vec3(0.62,0.72,0.78),vec3(0.5,0.46,0.4),uNight); /* day: faint sky tint; night: the lit cabin reflected */
+  gl_FragColor=vec4(c*(0.35+0.4*uNight),clamp(0.05+0.12*uNight+0.55*F+0.05*st,0.0,0.7)); }`});
+  const gi=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),gm,CAB_PANES.length*2+10); gi.frustumCulled=false; gi.renderOrder=3; G.add(gi); cab.glass=gi;
+  let k=0; const o=new THREE.Object3D();
+  [-1,1].forEach(s=>CAB_PANES.forEach(([a,b])=>{ o.position.set(s*2.3,0.335,(a+b)/2); o.rotation.set(0,-s*Math.PI/2,0); o.scale.set(b-a,1.57,1); o.updateMatrix(); gi.setMatrixAt(k++,o.matrix); }));
+  cab.leafPane0=k; gi.count=k+10; gi.instanceMatrix.needsUpdate=true;
+  /* riders: seated on the benches facing the aisle, some standing at the poles; re-seated per car (figHash, no rand()) */
+  const NS=isMobile?3:5, NSt=isMobile?2:3;
+  for(let i=0;i<NS+NSt;i++) cab.seat.push(i<NS?3:4);
+  const rid=mkPeople(NS+NSt,'riders',i=>figLook(7100+i,{top:SHIRT[Math.floor(figHash(i,32)*SHIRT.length)],bot:PANT[Math.floor(figHash(i,33)*PANT.length)],skin:FIG_SKIN[Math.floor(figHash(i,34)*8)],mode:cab.seat[i],rate:1,ph:figHash(i,35)*6.28}));
+  scene.remove(rid); G.add(rid); cab.rid=rid;
+  /* "Next: X" screens: both end walls and above every side door (one canvas texture) */
+  const cv=document.createElement('canvas'); cv.width=512; cv.height=128; cab.ctx=cv.getContext('2d'); cab.tex=new THREE.CanvasTexture(cv);
+  const dm=new THREE.InstancedMesh(new THREE.PlaneGeometry(1.56,0.39),new THREE.MeshBasicMaterial({map:cab.tex,toneMapped:false}),6); dm.frustumCulled=false;
+  [-1,1].forEach((e,i)=>{ o.position.set(0.0,1.75,e*(H2-0.06)); o.rotation.set(0,e>0?Math.PI:0,0); o.scale.setScalar(0.62); o.updateMatrix(); dm.setMatrixAt(i,o.matrix); });
+  let di=2; [-1,1].forEach(s=>CAB_DC.forEach(dc=>{ o.position.set(s*2.17,1.88,dc); o.rotation.set(0,-s*Math.PI/2,0); o.scale.setScalar(0.5); o.updateMatrix(); dm.setMatrixAt(di++,o.matrix); }));
+  G.add(dm); cab.disp=dm;
+  return G;
 }
-/* lay out the boxes for this boarding (door gap on the platform side sd) */
-function layInterior(sd){
-  const im=buildInterior(), L=CL-0.4, m=new THREE.Matrix4(), q=new THREE.Quaternion(), col=new THREE.Color(), bp=new THREE.Vector3(), bs=new THREE.Vector3(); let n=0;
-  const box=(x,y,z,w,h,d,r,g,b)=>{ const k=r>1?1:0.42; m.compose(bp.set(x,y,z),q,bs.set(w,h,d)); im.setMatrixAt(n,m); im.setColorAt(n,col.setRGB(r*k,g*k,b*k)); n++; }; /* night exposure is high: keep the cabin dim */
-  box(0,-1.9,0,4.6,0.1,L,0.13,0.14,0.17);            /* floor */
-  box(0,2.15,0,4.2,0.1,L,0.62,0.64,0.66);            /* ceiling */
-  [-1.15,1.15].forEach(x=>box(x,2.08,0,0.22,0.04,L-1,1.25,1.2,1.05)); /* light strips */
-  [-1,1].forEach(s=>{ box(s*2.25,1.65,0,0.1,1.0,L,0.5,0.52,0.56); /* above the windows (windows: y -0.55..1.15) */
-    for(let z=-L/2+0.15;z<=L/2;z+=2.45) if(!(s===sd&&Math.abs(z)<1.3)) box(s*2.25,0.3,z,0.1,1.7,0.28,0.42,0.44,0.48); /* window pillars */
-    const seg=(z0,z1)=>{ const c=(z0+z1)/2, d=z1-z0; box(s*2.3,-1.2,c,0.1,1.3,d,0.36,0.38,0.42); box(s*1.95,-1.4,c,0.6,0.12,d-0.3,0.08,0.34,0.44); box(s*2.16,-0.95,c,0.1,0.75,d-0.3,0.1,0.4,0.5); };
-    if(s===sd){ seg(-L/2,-1.3); seg(1.3,L/2); } else seg(-L/2,L/2); });
-  [-1,1].forEach(e=>{ box(0,0.15,e*(L/2),4.6,4.1,0.1,0.48,0.5,0.54); box(0,-0.55,e*(L/2-0.07),1.0,2.6,0.06,0.2,0.24,0.3); });
-  [-5.4,-2.6,2.6,5.4].forEach(z=>{ if(Math.abs(z)<L/2-0.5) box(0,0.15,z,0.06,4.0,0.06,0.85,0.86,0.9); }); /* grab poles */
-  im.count=n; im.instanceMatrix.needsUpdate=true; if(im.instanceColor) im.instanceColor.needsUpdate=true;
+/* seat the riders for car i (deterministic per car) */
+function cabSeat(i){
+  if(cab.ri===i) return; cab.ri=i; const o=new THREE.Object3D(), H2=CAB_H2, dw=0.77, rid=cab.rid;
+  const SEG=[[-H2+0.5,CAB_DC[0]-dw-1.3],[CAB_DC[0]+dw+0.5,CAB_DC[1]-dw-0.5],[CAB_DC[1]+dw+1.3,H2-0.5]]; let st=0;
+  cab.seat.forEach((md,j)=>{ const h=k=>figHash(j+i*17,k);
+    if(md===3){ const s=h(1)<0.5?1:-1, sg=SEG[Math.floor(h(2)*3)], z=sg[0]+(sg[1]-sg[0])*h(3); o.position.set(s*1.9,-1.36,z); o.rotation.set(0,-s*Math.PI/2,0); }
+    else { const pz=[CAB_DC[0],0,CAB_DC[1]][(st+i)%3], s=h(4)<0.5?1:-1; st++; o.position.set(s*0.3,-1.85,pz+0.25*s); o.rotation.set(0,(s>0?-1:1)*Math.PI/2+0.4,0); }
+    o.scale.setScalar(1); o.updateMatrix(); rid.setMatrixAt(j,o.matrix); });
+  rid.instanceMatrix.needsUpdate=true;
+}
+function cabDisplay(a,b){ const t=a+'|'+b; if(t===cab.txt) return; cab.txt=t; const c=cab.ctx;
+  c.fillStyle='#05070c'; c.fillRect(0,0,512,128); c.fillStyle='#22e6ff'; c.fillRect(0,122,512,6); c.fillStyle='#ffb02e'; c.font='600 50px Inter, Arial, sans-serif'; c.textBaseline='middle'; c.fillText(a,18,44);
+  c.fillStyle='#7fe8ff'; c.font='500 32px Inter, Arial, sans-serif'; c.fillText(b,18,100); cab.tex.needsUpdate=true; }
+const cabClosed=(i,e)=>e>0?i-1<=0:i+1>=TRAIN-1; /* the nose cars are not walkable: their gangway end is a closed cab wall */
+/* per frame while riding: follow the car, slide side leaves and storm doors, lamps, mood lighting */
+const _km=new THREE.Matrix4(), _kq=new THREE.Quaternion(), _ks=new THREE.Vector3(1,1,1), _cbV=new THREE.Vector3(), _kc=new THREE.Color(), _cbO=new THREE.Object3D(), _k0=new THREE.Matrix4().makeScale(0,0,0);
+function updateCabin(S,t,dt){
+  const G=cab.g, im=cab.box; G.position.copy(_rp); G.quaternion.copy(_rq); trainPts.visible=false; /* its glow sprite sits at the car centre */
+  cabSeat(ride.i);
+  const open=S.atStation>=0?S.door:0, closing=S.atStation>=0&&S.dwell<1.7, nt=uNight.value;
+  const put=(i,x,y,z,w,h,d)=>{ _km.compose(_cbV.set(x,y,z),_kq.identity(),_ks.set(w,h,d)); im.setMatrixAt(i,_km); };
+  cab.leaf.forEach((L,j)=>{ const o=L.s===ride.side?0.76*open:0, zc=L.dc+L.gs*(0.385+o);
+    put(L.i,L.s*2.33,-0.215,zc,0.06,3.27,0.77);
+    _cbO.position.set(L.s*2.36,0.335,zc); _cbO.rotation.set(0,-L.s*Math.PI/2,0); _cbO.scale.set(0.46,1.5,1); _cbO.updateMatrix(); cab.glass.setMatrixAt(cab.leafPane0+j,_cbO.matrix); });
+  cab.endD.forEach((D,j)=>{ const e=D.e, cl=cabClosed(ride.i,e), near=!cl&&Math.abs(ride.lx)<1.3&&ride.lz*e>CAB_H2-1.5;
+    cab.endO[j]+=((near?1:0)-cab.endO[j])*Math.min(1,dt*5); const o=cab.endO[j]*0.95;
+    put(D.dI,o,-0.55,D.z,0.9,2.6,0.05); put(D.hI,-0.32+o,-0.5,D.z-e*0.06,0.14,0.035,0.05); if(cl) im.setMatrixAt(D.nI,_k0); else put(D.nI,o,-0.55,D.zn,0.9,2.6,0.05);
+    if(cl){ put(D.cw,0,-0.55,D.z-e*0.09,1.0,2.7,0.03); D.gw.concat(D.wI,D.bd).forEach(i=>im.setMatrixAt(i,_k0)); }
+    else { im.setMatrixAt(D.cw,_k0); const H2=CAB_H2, GAP=PITCH-2*H2;
+      put(D.gw[0],0,-1.88,e*(H2+GAP/2),1.1,0.04,GAP+0.1); put(D.gw[1],-0.62,-0.4,e*(H2+GAP/2),0.04,3.0,GAP); put(D.gw[2],0.62,-0.4,e*(H2+GAP/2),0.04,3.0,GAP); put(D.gw[3],0,1.12,e*(H2+GAP/2),1.28,0.04,GAP);
+      D.bd.forEach((i,k)=>im.setMatrixAt(i,D.bm[k])); put(D.wI[0],-0.85,0.15,D.zn,0.8,4.1,0.1); put(D.wI[1],0.85,0.15,D.zn,0.8,4.1,0.1); put(D.wI[2],0,1.45,D.zn,1.0,1.4,0.1); }
+    _cbO.position.set(o,0.0,D.z+e*0.03); _cbO.rotation.set(0,0,0); _cbO.scale.set(cl?0:0.4,cl?0:1.0,1); _cbO.updateMatrix(); cab.glass.setMatrixAt(cab.leafPane0+8+j,_cbO.matrix); });
+  im.instanceMatrix.needsUpdate=true; cab.glass.instanceMatrix.needsUpdate=true;
+  cab.lamp.forEach(([i,s])=>{ if(s===ride.side&&open>0.02) _kc.setRGB(...(closing&&t%0.5<0.25?[0.5,0.1,0.08]:[2.0,0.25,0.2])); else _kc.setRGB(0.5,0.1,0.08); im.setColorAt(i,_kc.multiplyScalar(0.42)); });
+  const lc=S.atStation<0?0:S.led===2?(S.redOn?2:0):S.led, kk=1+0.9*(1-nt);
+  cab.led.forEach(([i,s])=>{ const c=s!==ride.side||!lc?[0.05,0.05,0.06]:lc===1?[0.1,0.82,0.36]:[0.86,0.08,0.06]; im.setColorAt(i,_kc.setRGB(c[0]/kk,c[1]/kk,c[2]/kk)); });
+  const k=1+0.9*(1-nt); /* daylight-dominant by day; at night the cabin outshines the dark outside */
+  if(Math.abs(k-cab.k)>0.005){ cab.k=k; im.material.color.setScalar(k); cab.emis.forEach(([i,c])=>im.setColorAt(i,_kc.setRGB(c[0]/k,c[1]/k,c[2]/k))); }
+  im.instanceColor.needsUpdate=true;
 }
 /* which station action is available now: elevator up/down, board, get off */
 function stationAct(){
@@ -3700,37 +3935,82 @@ function liftArrive(){
   else placeOfficer(S.track.x+s.x*d,0,S.track.z+s.z*d,Math.atan2(s.x,s.z));
   toast(S.name+' Station',lift.up?'Platform level. Board a train when its doors open.':'Street level');
 }
-function boardTrain(t,i,lz){
-  const sd=trainCarPose(t,i,_rp,_rq);
-  Object.assign(ride,{on:true,t,i,lx:sd*0.9,lz,side:sd,ly:sd*1.3,view:0}); ride.wy=foot.yaw=trainLocal(t,i,0,0,0,_rv)+ride.ly;
-  layInterior(sd); ride.int.visible=true; foot.mesh.visible=false; foot.trim.visible=false; foot.pitch=0.2;
-  camera.fov=70; camera.updateProjectionMatrix(); fovNow=70;
-  document.body.classList.add('riding'); rideHud.hidden=false; keysEl.innerHTML=KEYS_RIDE; carBtn.innerHTML='Outside<small>view</small>';
+/* M-028: robots on board. Rogues in the officer's car or a neighbour move away from him (faster once scanned) and slip
+   through the storm door into the next car; cars around the officer get a good robot (and maybe a rogue) on first visit. */
+function trFlee(u,dt){
+  u.trSp=0; if(!u.rogue||!ride.on||u.tr.t!==ride.t||Math.abs(u.tr.i-ride.i)>1) return;
+  const dz=u.tr.lz+(ride.i-u.tr.i)*PITCH-ride.lz; if(!(u.scanned?Math.abs(dz)<14:Math.abs(dz)<5)) return;
+  const dir=dz>=0?1:-1, sp=u.scanned?2.4:1.2; u.tr.lz+=dir*sp*dt; u.tr.lx*=1-Math.min(1,dt*2); u.tr.dz=dir; u.trSp=sp;
+  if(Math.abs(u.tr.lz)>CAB_H2-0.4){ if(!cabClosed(u.tr.i,dir)){ u.tr.i-=dir; u.tr.lz=-dir*(CAB_H2-0.6); } else u.tr.lz=dir*(CAB_H2-0.4); }
+}
+function cabPopulate(){
+  if(!hunt.on) return; cab.pop=cab.pop||new Set();
+  for(let c=ride.i-1;c<=ride.i+1;c++){ const key=ride.t+':'+c; if(c<1||c>TRAIN-2||cab.pop.has(key)) continue; cab.pop.add(key);
+    if(units.length>(isMobile?14:22)) continue;
+    if(!units.some(u=>u.tr&&u.tr.t===ride.t&&u.tr.i===c)) spawnStationBot(false,null,{t:ride.t,i:c});
+    if(Math.random()<(isMobile?0.25:0.4)) spawnStationBot(true,null,{t:ride.t,i:c}); }
+}
+/* M-028: walk-on boarding. While a train dwells with its doors open, stepping off the platform edge into a door
+   opening of a middle car boards it (the Board button / E stays as the phone fallback). Called from updateFoot. */
+function walkBoard(){
+  if(!hunt.on||!foot.on||ride.on||lift.T>0||Math.abs(foot.pos.y-ST_Y)>0.6) return false;
+  for(let t=0;t<2;t++){ const T=trainState[t]; if(T.atStation<0||T.door<=0.4) continue; /* not once the leaves are >60% closed */
+    for(let i=1;i<TRAIN-1;i++){ const sd=trainCarPose(t,i,_rp,_rq); if(_rp.distanceToSquared(foot.pos)>HZ*HZ+64) continue;
+      _rv.copy(foot.pos).sub(_rp).applyQuaternion(_rq.invert()); const x=_rv.x*sd;
+      if(x>1&&x<ST_E0+0.3&&Math.abs(Math.abs(_rv.z)-HZ/2)<0.62){ boardTrain(t,i,_rv.z,true); return true; } } }
+  return false;
+}
+const RIDE_VIEWS=['Window<small>view</small>','Outside<small>view</small>','Cabin<small>view</small>'];
+function boardTrain(t,i,lz,walk){
+  const sd=trainCarPose(t,i,_rp,_rq), dz=CAB_DC.reduce((a,c)=>Math.abs(lz-c)<Math.abs(lz-a)?c:a);
+  Object.assign(ride,{on:true,t,i,lx:sd*(walk?2.1:1.2),lz:walk?Math.max(dz-0.6,Math.min(dz+0.6,lz)):lz,side:sd,ly:-sd*Math.PI/2,view:0,snap:true});
+  ride.wy=foot.yaw=trainLocal(t,i,0,0,0,_rv)+ride.ly; foot.speed=walk?Math.max(foot.speed,1.2):0;
+  buildInterior().visible=true; cab.pop=new Set(); cabPopulate(); foot.pitch=0.25; trainLocal(t,i,ride.lx,-1.85,ride.lz,foot.pos);
+  camera.near=0.1; camera.fov=70; camera.updateProjectionMatrix(); fovNow=70;
+  document.body.classList.add('riding'); rideHud.hidden=false; keysEl.innerHTML=KEYS_RIDE; carBtn.innerHTML=RIDE_VIEWS[0];
   beep(520,780,0.18,'sine',0.05); pop('All aboard');
 }
 function leaveTrain(){
   if(!ride.on) return;
   const st=trainState[ride.t].atStation, sd=ride.side;
   trainLocal(ride.t,ride.i,sd*(ST_E0+1.4),-1.85,ride.lz,_rv); const yaw=trainLocal(ride.t,ride.i,0,0,0,_rw)+sd*Math.PI/2;
-  ride.on=false; ride.int.visible=false; document.body.classList.remove('riding'); rideHud.hidden=true;
+  ride.on=false; cab.g.visible=false; trainPts.visible=true; document.body.classList.remove('riding'); rideHud.hidden=true;
   placeOfficer(_rv.x,ST_Y,_rv.z,yaw); foot.mesh.visible=true; foot.trim.visible=true;
-  camera.fov=60; camera.updateProjectionMatrix(); fovNow=60;
+  camera.near=1; camera.fov=60; camera.updateProjectionMatrix(); fovNow=60;
   keysEl.innerHTML=KEYS_FOOT; carBtn.textContent='Get in';
   if(st>=0) toast(STATIONS[st].name+' Station','Take the elevator down at the end of the skybridge.');
 }
-function toggleRideView(){ if(!ride.on) return; ride.view^=1; carBtn.innerHTML=ride.view?'Window<small>view</small>':'Outside<small>view</small>'; }
+function toggleRideView(){ if(!ride.on) return; ride.view=(ride.view+1)%3; carBtn.innerHTML=RIDE_VIEWS[ride.view]; }
+const _rc=new THREE.Vector3();
 function updateRide(dt,t){
   const K=c=>!!keys[c], S=trainState[ride.t];
   ride.ly+=foot.yaw-ride.wy; /* pointer drags edit foot.yaw; keep the look relative to the car */
-  ride.ly+=((K('KeyA')||K('ArrowLeft')?1:0)-(K('KeyD')||K('ArrowRight')?1:0)-stick.x*0.8)*dt*2;
+  ride.ly+=((K('KeyA')||K('ArrowLeft')?1:0)-(K('KeyD')||K('ArrowRight')?1:0)-stick.x*0.8)*dt*2.3;
   const fwd=Math.max(-1,Math.min(1,(K('KeyW')||K('ArrowUp')?1:0)-(K('KeyS')||K('ArrowDown')?1:0)+stick.y));
-  ride.lx=Math.max(-1.5,Math.min(1.5,ride.lx+Math.sin(ride.ly)*fwd*dt*2.2)); ride.lz=Math.max(-HZ+1,Math.min(HZ-1,ride.lz+Math.cos(ride.ly)*fwd*dt*2.2));
+  foot.speed+=((fwd>0?fwd*2.6:fwd*1.6)-foot.speed)*Math.min(1,dt*8);
+  /* confined to the cabin floor: aisle, door vestibules and, through an open storm door, the gangway to the next car */
+  const nx=ride.lx+Math.sin(ride.ly)*foot.speed*dt, nz=ride.lz+Math.cos(ride.ly)*foot.speed*dt, H2=CAB_H2-0.35;
+  const inDoor=z=>CAB_DC.some(c=>Math.abs(z-c)<0.62), openSide=S.atStation>=0&&S.door>0.5;
+  const ok=(x,z)=>Math.abs(z)>H2?Math.abs(x)<=0.4&&cab.endO[z>0?1:0]>0.8&&!cabClosed(ride.i,z>0?1:-1):Math.abs(x)<=(inDoor(z)?2.05:1.4);
+  if(openSide&&inDoor(ride.lz)&&nx*ride.side>2.15){ leaveTrain(); return; }
+  if(ok(nx,ride.lz)) ride.lx=nx; if(ok(ride.lx,nz)) ride.lz=nz;
+  if(Math.abs(ride.lz)>PITCH/2){ const e=ride.lz>0?1:-1; ride.i-=e; ride.lz-=e*PITCH; cab.endO.reverse(); cabPopulate(); } /* crossed the gangway: re-pose the cabin to the next car */
   const cy=trainLocal(ride.t,ride.i,ride.lx,-1.85,ride.lz,foot.pos); ride.wy=foot.yaw=cy+ride.ly;
-  ride.int.position.copy(_rp); ride.int.quaternion.copy(_rq);
-  const sf=Math.min(1,S.speed/TR_V);
-  if(!ride.view){ /* standing at the window: eye 1.62 m, a gentle sway that grows with speed */
+  updateCabin(S,t,dt);
+  /* officer pose (as on foot) */
+  foot.readyT-=dt; const sp=Math.abs(foot.speed), mode=(hunt.scanOf||foot.readyT>0)&&sp<1?10:sp<0.25?4:0, rate=mode===0?sp*2.6+2:0;
+  foot.cyc+=rate*dt*(foot.speed<0?-1:1); { const A=foot.anim.array; A[0]=mode; A[1]=0; A[2]=foot.cyc; A[3]=0.5; foot.anim.needsUpdate=true; }
+  const vis=ride.view!==1; foot.mesh.visible=vis; foot.trim.visible=vis&&!isMobile; /* phone: the 5 trim meshes are skipped in the cabin (draw-call cap) */
+  _hfq.setFromAxisAngle(YAX,foot.yaw); _hfm.compose(foot.pos,_hfq,_hfs); foot.mesh.setMatrixAt(0,_hfm); foot.mesh.instanceMatrix.needsUpdate=true;
+  foot.trim.position.copy(foot.pos); foot.trim.rotation.set(0,foot.yaw,0); foot.trim.scale.setScalar(1.04);
+  const sf=Math.min(1,S.speed/TR_V), sl=Math.sin(ride.ly), cl=Math.cos(ride.ly);
+  if(ride.view===0){ /* third person inside the cabin: behind and above the officer, clamped to the car's interior box */
+    const D=2.4, cz=Math.max(-PITCH/2-0.6,Math.min(PITCH/2+0.6,ride.lz-cl*D)), cw=Math.abs(cz)>CAB_H2-0.3?0.4:2.0, cx=Math.max(-cw,Math.min(cw,ride.lx-sl*D));
+    trainLocal(ride.t,ride.i,cx,Math.min(1.9,-1.85+1.75+0.9*foot.pitch),cz,_rc); camera.position.lerp(_rc,ride.snap?1:1-Math.exp(-dt*10)); ride.snap=false;
+    trainLocal(ride.t,ride.i,ride.lx+sl*3,-1.85+1.3-Math.sin(foot.pitch-0.25)*3,ride.lz+cl*3,_rv); camera.lookAt(_rv);
+  } else if(ride.view===1){ /* standing at the window: eye 1.62 m, a gentle sway that grows with speed */
     trainLocal(ride.t,ride.i,ride.lx+Math.sin(t*2.3)*0.025*sf,-1.85+1.62+Math.sin(t*7.1)*0.012*sf,ride.lz,camera.position);
-    const pe=-(foot.pitch-0.2)*0.9; _rv.set(Math.sin(ride.ly)*Math.cos(pe),Math.sin(pe),Math.cos(ride.ly)*Math.cos(pe)).applyQuaternion(_rq).add(camera.position);
+    const pe=-(foot.pitch-0.2)*0.9; _rv.set(sl*Math.cos(pe),Math.sin(pe),cl*Math.cos(pe)).applyQuaternion(_rq).add(camera.position);
     camera.lookAt(_rv); camera.rotateZ(Math.sin(t*1.7)*0.006*sf);
   } else { /* outside chase view of the train */
     trainLocal(ride.t,ride.i,ride.side*-9,9,-30,_rv); camera.position.lerp(_rv,1-Math.exp(-dt*4)); trainLocal(ride.t,ride.i,0,0,8,_rw); camera.lookAt(_rw); }
@@ -3738,9 +4018,9 @@ function updateRide(dt,t){
   const hd=((-foot.yaw*180/Math.PI)%360+360)%360; compassStrip.style.transform='translateX('+(-hd*1.6).toFixed(1)+'px)';
   drive.f=(drive.f||0)+1; if(drive.f%3===0) drawRadar();
   if(drive.f%10===0||!rideHud.textContent){ let a, b;
-    if(S.atStation>=0){ const nx=nextStation(S,1); a='At '+STATIONS[S.atStation].name; b=(S.door>0.5?'Doors open · get off now':'Doors closing')+' · next: '+(nx>=0?STATIONS[nx].name:'-'); }
+    if(S.atStation>=0){ const nx=nextStation(S,1); a='At '+STATIONS[S.atStation].name; b=(S.led===2?'Doors closing':S.door>0.5?'Doors open · get off now':'Doors closed')+' · next: '+(nx>=0?STATIONS[nx].name:'-'); }
     else { const s=Math.round(stAhead(S,S.next)/TR_V+TR_V/(2*TR_A)); a='Next: '+STATIONS[S.next].name; b='Arriving in '+Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
-    rideHud.innerHTML='<b>'+a+'</b><span>'+b+'</span>'; }
+    rideHud.innerHTML='<b>'+a+'</b><span>'+b+'</span>'; cabDisplay(S.atStation>=0?STATIONS[S.atStation].name:'Next: '+STATIONS[S.next].name,S.atStation>=0?(S.led===2?'Doors closing':S.door>0.5?'Doors open · '+(ride.side>0?'right':'left')+' side':'Doors closed'):b); }
   updateAudio(0,false);
 }
 /* ---- start / stop ---- */
@@ -3760,7 +4040,7 @@ function startHunt(){
 }
 function stopHunt(){
   if(!hunt.on) return;
-  if(ride.on){ ride.on=false; ride.int.visible=false; rideHud.hidden=true; document.body.classList.remove('riding'); camera.fov=62; camera.updateProjectionMatrix(); fovNow=62; }
+  if(ride.on){ ride.on=false; cab.g.visible=false; trainPts.visible=true; rideHud.hidden=true; document.body.classList.remove('riding'); camera.near=1; camera.fov=62; camera.updateProjectionMatrix(); fovNow=62; }
   lift.T=0; fadeEl.classList.remove('on'); actBtn.hidden=true; hunt.act=null;
   if(foot.on){ foot.on=false; foot.mesh.visible=false; foot.trim.visible=false; }
   hunt.on=false; hunt.intro=false; introEl.hidden=true; scanCard.hidden=true;
@@ -3804,7 +4084,7 @@ addEventListener('pointermove',e=>{ const d=foot.drag; if(!d||d.id!==e.pointerId
 addEventListener('pointerup',e=>{ const d=foot.drag; if(!d||d.id!==e.pointerId) return; foot.drag=null; if(d.type==='mouse'&&d.moved<6&&hunt.on) detain(); });
 addEventListener('pointercancel',()=>{ foot.drag=null; });
 /* debug hook for tools/shot.js verification (like window.__m2140); M-026 can also use placeOfficer/groundAt/WALK_SURFACES directly */
-window.__m2140hunt={hunt,units,foot,WALK_SURFACES,placeOfficer,groundAt,heroPos,finishScan,detain,getOut,getIn,startHunt,stopHunt,ride,lift,stationAct,doAct,boardTrain,leaveTrain,toggleRideView,newCase,stationCase,refreshAct};
+window.__m2140hunt={hunt,units,foot,WALK_SURFACES,placeOfficer,groundAt,heroPos,finishScan,detain,getOut,getIn,startHunt,stopHunt,ride,lift,stationAct,doAct,boardTrain,leaveTrain,toggleRideView,newCase,stationCase,refreshAct,cab,walkBoard,HZ,PITCH,CAB_H2,spawnStationBot};
 /* radar: unknown robots grey, scanned good robots green, scanned rogue red (kept on the rim), case area cyan, parked car blue */
 function drawHuntRadar(c,R,sc,rx,rz,fx,fz,p){
   const dot=(x,z,col,r,edge,sq)=>{ const dx=x-p.x, dz=z-p.z; let sx=sc*(rx*dx+rz*dz), sy=-sc*(fx*dx+fz*dz); const L=Math.hypot(sx,sy), lim=R-7;
