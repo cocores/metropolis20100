@@ -3307,15 +3307,15 @@ function updateDrive(dt,t){
     myCar.updateMatrixWorld(); _cv.set(0,1.25,0.2); myCar.localToWorld(_cv);
     camera.position.copy(_cv); camera.quaternion.copy(myCar.quaternion).multiply(_flip);
   } else {
-    const back=14+Math.min(Math.abs(drive.speed),150)*0.03;
+    const back=rs?7+Math.min(Math.abs(drive.speed),150)*0.02:14+Math.min(Math.abs(drive.speed),150)*0.03, cH=rs?2.4:4.6, lH=rs?0.9:1.6; /* patrol roadster: closer, lower chase cam */
     /* M-017: ray-test car -> chase spot; when a building is in the way pull the camera in and up (at once), then ease back out */
-    _co.set(p.x,p.y+1.6,p.z); let kT=CAM_K[CAM_K.length-1];
-    for(const ck of CAM_K){ if(camRayClear(_co,p.x-_dir.x*back*ck,p.y+4.6+(1-ck)*7,p.z-_dir.z*back*ck)){ kT=ck; break; } }
+    _co.set(p.x,p.y+lH,p.z); let kT=CAM_K[CAM_K.length-1];
+    for(const ck of CAM_K){ if(camRayClear(_co,p.x-_dir.x*back*ck,p.y+cH+(1-ck)*7,p.z-_dir.z*back*ck)){ kT=ck; break; } }
     drive.camK=kT<drive.camK?kT:drive.camK+(kT-drive.camK)*(1-Math.exp(-dt*1.5));
-    _want.set(p.x,p.y+4.6+(1-drive.camK)*7,p.z).addScaledVector(_dir,-back*drive.camK);
+    _want.set(p.x,p.y+cH+(1-drive.camK)*7,p.z).addScaledVector(_dir,-back*drive.camK);
     camera.position.lerp(_want,1-Math.exp(-dt*5));
     if(!camRayClear(_co,camera.position.x,camera.position.y,camera.position.z)) camera.position.copy(_want);
-    _look.set(p.x,p.y+1.6,p.z).addScaledVector(_dir,2+7*drive.camK); /* pulled-in camera looks down at the car */
+    _look.set(p.x,p.y+lH,p.z).addScaledVector(_dir,rs?1+4*drive.camK:2+7*drive.camK); /* pulled-in camera looks down at the car */
     camera.lookAt(_look);
   }
   if(drive.shake>0.01){ const s=drive.shake*0.7; camera.position.x+=(Math.random()-0.5)*s; camera.position.y+=(Math.random()-0.5)*s; camera.position.z+=(Math.random()-0.5)*s; }
