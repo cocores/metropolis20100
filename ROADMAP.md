@@ -296,3 +296,7 @@ It also fixes two M-023 nits: the hem wedge and bench sitters perching on the ed
 - Exterior: tinted glass with a moving reflection, a lit interior with depth showing through, framed rounded windows, and glass in the doors.
 - Riding interior: real glass panes with subtle reflections, and cabin lighting that follows the mood.
 - Budget: draw calls +≤2.
+- Scope added later by the owner the same day:
+  - Walk-on boarding: walking through an open door boards the train, and walking out gets you off. The buttons stay as a fallback.
+  - Riding: a third-person view inside a full cabin with seats, poles and rails, a ceiling light, passengers, door panels, an end wall with a "Next: X" screen, and robots riding along.
+  - Riding budget: +≤8 draw calls on desktop and +≤5 on phone, built lazily.
