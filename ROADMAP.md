@@ -285,7 +285,7 @@ Follow-ups:
 - Platform walkers drift off curved decks.
 - Desktop prompt toasts are chatty. The officer takes the elevator up to a platform, boards a dwelling train, rides it with an in-car or outside camera, and gets off at any station. Rogue robots hide at stations and on trains.
 
-**M-027 Central Park rink and natural skating** (render-dev) 🔶 in-progress (owner request, 2026-11-25). The owner shared a YouTube video of skating in Central Park. We can't download it, so the work follows the real rink and skating biomechanics:
+**M-027 Central Park rink and natural skating** (render-dev) ✅ done 2026-11-27 (owner request, 2026-11-25; resumed from wip and merged). Orbit +1 draw call, +2 up close. Follow-ups: Day ice reads near-white; phone metrics and patrol/drive/train regression shots not re-taken. The owner shared a YouTube video of skating in Central Park. We can't download it, so the work follows the real rink and skating biomechanics:
 - a rounded-rectangle rink with dasher boards, a rink house, a terrace and the skyline backdrop
 - skaters push to the side and glide, with a forward lean, counter-clockwise flow and crossovers
 - beginners, pairs and kids

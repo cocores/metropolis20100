@@ -7,6 +7,5 @@ To resume, run `git apply -3 wip/<file>.patch` in a fresh worktree off current m
 ## 2026-11-25: paused until credits renew
 | Ticket | Patch (base) | State when stopped |
 |---|---|---|
-| M-027 Rink and skating | `M-027-rink-skating.patch` (`6020f50`) | Rebased onto main 2026-11-26. Rink and skating edits are applied. Was taking the after-metrics and the Day shot from the north-east. Unverified. |
 
-M-026 (ride the train) and M-008/M-018 (HUD and dock) have not started.
+No paused work right now. M-008/M-018 (HUD and dock) have not started.
