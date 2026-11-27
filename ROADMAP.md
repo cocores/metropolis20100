@@ -291,3 +291,8 @@ Follow-ups:
 - beginners, pairs and kids
 
 It also fixes two M-023 nits: the hem wedge and bench sitters perching on the edge. Still frames from the owner would let us refine it.
+
+**M-028 Realistic train windows** (render-dev) 🔶 in-progress (owner request, 2026-11-27).
+- Exterior: tinted glass with a moving reflection, a lit interior with depth showing through, framed rounded windows, and glass in the doors.
+- Riding interior: real glass panes with subtle reflections, and cabin lighting that follows the mood.
+- Budget: draw calls +≤2.
