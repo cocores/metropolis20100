@@ -292,7 +292,12 @@ Follow-ups:
 
 It also fixes two M-023 nits: the hem wedge and bench sitters perching on the edge. Still frames from the owner would let us refine it.
 
-**M-028 Realistic train windows** (render-dev) 🔶 in-progress (owner request, 2026-11-27).
+**M-028 Realistic train windows** (render-dev) ✅ done 2026-11-27 (owner request). Riding draw calls +8 on desktop and +2 on phone; orbit +0. Follow-ups:
+- The gangway shows the neighbour car's end cap on curves.
+- Robots on board ignore seats and poles.
+- Only the officer triggers a door recycle.
+- Riders look dark at night.
+- Day mood pushes the door lamps slightly over 0.86.
 - Exterior: tinted glass with a moving reflection, a lit interior with depth showing through, framed rounded windows, and glass in the doors.
 - Riding interior: real glass panes with subtle reflections, and cabin lighting that follows the mood.
 - Budget: draw calls +≤2.
