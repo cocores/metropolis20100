@@ -3960,6 +3960,15 @@ function footHit(x,z,y){ /* true when the officer (feet at y) can't stand at x,z
 function fSolid(x,y,z){ /* camera pull-in: is (x,y,z) inside a park part (0.35 m margin)? */
   const l=FGRID.get(fKey(Math.floor(x/FCELL),Math.floor(z/FCELL)));
   if(l) for(const o of l){ if(y>o.y0-0.35&&y<o.y1+0.35&&fIn(o,x,z,0.35)) return true; } return false; }
+function footPen(x,z,y){ /* how deep the officer is inside park parts / water (0 = free): from inside one he may only move to shallower spots */
+  let d=0; const l=FGRID.get(fKey(Math.floor(x/FCELL),Math.floor(z/FCELL)));
+  if(l) for(const o of l){ if(o.y1<=y+FSTEP||o.y0>=y+1.8) continue; const rad=o.y1>y+0.9?0.4:0, dx=x-o.x, dz=z-o.z;
+    if(o.r) d+=Math.max(0,o.r+rad-Math.hypot(dx,dz));
+    else d+=Math.max(0,Math.min(o.hx+rad-Math.abs(dx*o.c-dz*o.s),o.hz+rad-Math.abs(dx*o.s+dz*o.c))); }
+  if(inParkRect(x,z)&&!onBow(x,z)&&!(x>70&&x<82&&Math.abs(z-PKF.boathouse.z)<2)){
+    for(const W of PWATER) if(x>W.b.x0-2&&x<W.b.x1+2&&z>W.b.z0-2&&z<W.b.z1+2) d+=Math.max(0,0.2-polySD(W,x,z));
+    d+=Math.max(0,PKF.pool.r+0.2-Math.hypot(x-PKF.pool.x,z-PKF.pool.z)); }
+  return d; }
 function footGround(x,z,y){ /* groundAt plus the park: lawn, ice, Bow Bridge and the tops of low park parts */
   let g=groundAt(x,z,y);
   if(!inParkRect(x,z)) return g;
@@ -4520,8 +4529,8 @@ function updateFoot(dt,t){
   foot.yaw+=turn*dt*2.3;
   const tgt=fwd>0?fwd*(run?8:4):fwd*2.5; foot.speed+=(tgt-foot.speed)*Math.min(1,dt*8);
   const fx=Math.sin(foot.yaw), fz=Math.cos(foot.yaw), dx=fx*foot.speed*dt, dz=fz*foot.speed*dt;
-  const stuck=footHit(p.x,p.z,p.y); /* M-033: park parts and water; if already inside one (a teleport), let him walk out */
-  const ok=(x,z)=>!solidAt(x,p.y+1.0,z,0.4)&&(p.y>0.5||(Math.abs(x)<=halfW(z)+15&&z>-1470&&z<1600))&&(stuck||!footHit(x,z,p.y));
+  const pen0=footHit(p.x,p.z,p.y)?footPen(p.x,p.z,p.y):0; /* M-033: park parts and water; if already inside one (a teleport), he may only walk out, never through */
+  const ok=(x,z)=>!solidAt(x,p.y+1.0,z,0.4)&&(p.y>0.5||(Math.abs(x)<=halfW(z)+15&&z>-1470&&z<1600))&&(!footHit(x,z,p.y)||(pen0>0&&footPen(x,z,p.y)<pen0-1e-4));
   if(ok(p.x+dx,p.z)) p.x+=dx; if(ok(p.x,p.z+dz)) p.z+=dz;
   if(Math.abs(p.y-drive.pos.y)<2){ /* M-029: keep the officer out of the roadster's footprint (car-local box), so he can stand at the door */
     const cs=Math.cos(drive.yaw), sn=Math.sin(drive.yaw), cx=p.x-drive.pos.x, cz=p.z-drive.pos.z, lx=cx*cs-cz*sn, lz=cx*sn+cz*cs, hx=1.15, hz=2.45;
