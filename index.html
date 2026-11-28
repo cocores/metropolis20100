@@ -1043,7 +1043,19 @@ function pFan(D,pts,yv,col,gl){ let cx=0,cz=0; pts.forEach(p=>{cx+=p[0];cz+=p[1]
   for(let i=0;i<pts.length;i++){ const a=pts[i], b=pts[(i+1)%pts.length]; pTri(D,[cx,yv,cz],[a[0],yv,a[1]],[b[0],yv,b[1]],col,gl); } }
 const asLoop=pts=>({x:pts.map(p=>p[0]).concat([pts[0][0]]),z:pts.map(p=>p[1]).concat([pts[0][1]]),closed:true});
 const _po=new THREE.Object3D();
+/* M-033: footprints of the solid park parts (everything pAdd puts in SD) for the on-foot collision (footHit / footGround).
+   {x,z,y0,y1} plus r (round: posts, trunks), or c,s,hx,hz (box turned by ry; e:1 = ellipse, for rocks). Tilted parts use their AABB. */
+const PCOL=[]; let pColD=null;
+function pColAdd(geo,x,y,z,sx,sy,sz,ry,rx,rz){
+  const h=geo===gBox?[0.5,0.5,0.5]:geo===gRing?[1.17,1.17,0.17]:geo===gIco0||geo===gIco1?[1,1,1]:[1,0.5,1]; let o;
+  if(rx||rz){ const e=_po.matrix.elements, ax=k=>Math.abs(e[k])*h[0]+Math.abs(e[k+4])*h[1]+Math.abs(e[k+8])*h[2], ey=ax(1);
+    o={x,z,c:1,s:0,hx:ax(0),hz:ax(2),y0:y-ey,y1:y+ey}; }
+  else { o={x,z,y0:y-h[1]*sy,y1:y+h[1]*sy};
+    if(geo!==gBox&&geo!==gRing&&geo!==gIco0&&geo!==gIco1&&Math.abs(sx-sz)<0.01*sx) o.r=sx;
+    else { o.c=Math.cos(ry||0); o.s=Math.sin(ry||0); o.hx=h[0]*sx; o.hz=h[2]*sz; if(geo===gIco0||geo===gIco1) o.e=1; } }
+  if(o.y1>PG+0.1&&o.y0<PG+5) PCOL.push(o); }
 function pAdd(D,geo,x,y,z,sx,sy,sz,col,gl,ry,rx,rz){ _po.position.set(x,y,z); _po.rotation.set(rx||0,ry||0,rz||0); _po.scale.set(sx,sy,sz); _po.updateMatrix();
+  if(D===pColD) pColAdd(geo,x,y,z,sx,sy,sz,ry,rx,rz);
   const g=geo.clone().applyMatrix4(_po.matrix), P=g.attributes.position.array, N=g.attributes.normal.array;
   for(let i=0;i<P.length;i+=3){ D.p.push(P[i],P[i+1],P[i+2]); D.n.push(N[i],N[i+1],N[i+2]); D.c.push(col.r,col.g,col.b); D.g.push(gl); } g.dispose(); }
 function pGeo(D,extra){ const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(D.p,3)); g.setAttribute('normal',new THREE.Float32BufferAttribute(D.n,3));
@@ -1056,6 +1068,7 @@ const gBox=NI(new THREE.BoxGeometry(1,1,1)), gCyl=NI(new THREE.CylinderGeometry(
 const PLP=[], PLC=[]; // park glow points (lamps, water edges; drone beacons and boat lanterns are appended at the end and move)
 function pPt(x,y,z,col){ PLP.push(x,y,z); PLC.push(col.r,col.g,col.b); }
 const GD=pBuf(), SD=pBuf(), RD=pBuf(); // RD: the rink's glossy parts (ice, glazing, LED crown), aGlow = surface kind
+pColD=SD;
 {
   const K=(h,k)=>C(h).multiplyScalar(k||1);
   const cPath=K(0xb3a890), cMall=K(0x77746e), cDrive=K(0x58595b), cTrack=K(0x9a5a48), cEdge=K(0x3dffb0,0.2), cRim=K(0x7c8f84), cWhite=K(0xeeeeea),
@@ -3923,6 +3936,40 @@ function groundAt(x,z,yRef){
   for(const s of WALK_SURFACES){ const y=s.at?s.at(x,z):(x>=s.x0&&x<=s.x1&&z>=s.z0&&z<=s.z1?s.y:null); if(y!=null&&y<=lim&&y>g) g=y; }
   return g;
 }
+/* M-033 Central Park on foot: the park parts recorded by pAdd (PCOL) plus tree trunks and the carousel, in an 8 m grid (each part is
+   filed in every cell its footprint + 0.5 m touches, so one lookup per test). A part blocks the officer (radius 0.4) when its top is
+   more than FSTEP above his feet and its bottom below his head (knee-high ones only under his feet, so stairs climb); lower parts are ground (stairs, the terraces, small rocks, the dock).
+   Water is off limits except on Bow Bridge (deck = bowY) and the boathouse dock; the park lawn is PG, the ice PG+0.08 (the dasher
+   boards are parts, so the gate is the only way onto the ice). */
+const FSTEP=0.45, FCELL=8, FGRID=new Map(), fKey=(i,j)=>(i+512)*2048+j+512;
+{ TRUNK.forEach(k=>{ if(k.a[1]<PG) PCOL.push({x:k.a[0],z:k.a[2],r:k.r,y0:PG-0.2,y1:Math.max(k.b[1],PG+2)}); });
+  PCOL.push({x:PKF.carousel.x,z:PKF.carousel.z,r:8,y0:0,y1:PG+5});
+  for(const o of PCOL){
+    if(Math.abs(o.x-BOW.x)<BOW.hw-0.1&&o.z>BOW.z0-1.5&&o.z<BOW.z1+1.5) continue; // Bow Bridge deck + end blocks: walked via bowY
+    const ex=o.r||Math.abs(o.c)*o.hx+Math.abs(o.s)*o.hz, ez=o.r||Math.abs(o.s)*o.hx+Math.abs(o.c)*o.hz;
+    for(let i=Math.floor((o.x-ex-0.5)/FCELL);i<=Math.floor((o.x+ex+0.5)/FCELL);i++) for(let j=Math.floor((o.z-ez-0.5)/FCELL);j<=Math.floor((o.z+ez+0.5)/FCELL);j++){
+      const k=fKey(i,j); let l=FGRID.get(k); if(!l) FGRID.set(k,l=[]); l.push(o); } } }
+function fIn(o,x,z,rad){ const dx=x-o.x, dz=z-o.z; if(o.r) return dx*dx+dz*dz<(o.r+rad)*(o.r+rad);
+  const lx=dx*o.c-dz*o.s, lz=dx*o.s+dz*o.c; return o.e?(lx/(o.hx+rad))**2+(lz/(o.hz+rad))**2<1:Math.abs(lx)<o.hx+rad&&Math.abs(lz)<o.hz+rad; }
+const inParkRect=(x,z)=>x>PARK.x0&&x<PARK.x1&&z>PARK.z0&&z<PARK.z1;
+function footHit(x,z,y){ /* true when the officer (feet at y) can't stand at x,z */
+  const l=FGRID.get(fKey(Math.floor(x/FCELL),Math.floor(z/FCELL)));
+  if(l) for(const o of l){ if(o.y1>y+FSTEP&&o.y0<y+1.8&&fIn(o,x,z,o.y1>y+0.9?0.4:0)) return true; } /* knee-high parts (a stair too steep) only block under his feet */
+  return inParkRect(x,z)&&!onBow(x,z)&&!(x>70&&x<82&&Math.abs(z-PKF.boathouse.z)<2)&&(inWater(x,z,0.2)||Math.hypot(x-PKF.pool.x,z-PKF.pool.z)<PKF.pool.r+0.2);
+}
+function fSolid(x,y,z){ /* camera pull-in: is (x,y,z) inside a park part (0.35 m margin)? */
+  const l=FGRID.get(fKey(Math.floor(x/FCELL),Math.floor(z/FCELL)));
+  if(l) for(const o of l){ if(y>o.y0-0.35&&y<o.y1+0.35&&fIn(o,x,z,0.35)) return true; } return false; }
+function footGround(x,z,y){ /* groundAt plus the park: lawn, ice, Bow Bridge and the tops of low park parts */
+  let g=groundAt(x,z,y);
+  if(!inParkRect(x,z)) return g;
+  if(PG<=y+0.6&&PG>g) g=PG;
+  if(PG+0.08>g&&PG+0.08<=y+0.6&&rkSD(x,z)<0) g=PG+0.08;
+  if(onBow(x,z)){ const b=bowY(z); if(b<=y+0.6&&b>g) g=b; }
+  const l=FGRID.get(fKey(Math.floor(x/FCELL),Math.floor(z/FCELL)));
+  if(l) for(const o of l){ if(o.y1>y+FSTEP||o.y1<=g) continue; if(fIn(o,x,z,0)) g=o.y1; }
+  return g;
+}
 const _hfm=new THREE.Matrix4(), _hfq=new THREE.Quaternion(), _hfs=new THREE.Vector3(1.04,1.04,1.04), YAX=new THREE.Vector3(0,1,0);
 function ensureOfficer(){
   if(foot.mesh) return;
@@ -4442,8 +4489,8 @@ function getOut(){
   if(drive.cockpit) toggleView();
   const g=carGround(); drive.speed=0; drive.vy=0; drive.pos.y=g+RS_RIDE; drive.roll=drive.pitch=0; rsGround(false); /* M-030: parks on its wheels */
   const fx=Math.sin(drive.yaw), fz=Math.cos(drive.yaw); let spot=null;
-  for(const [r,f] of [[-1.5,-0.3],[1.5,-0.3],[-3.3,0],[3.3,0],[0,-5.4],[0,5.4],[-3.3,-3],[3.3,-3],[-3.3,3]]){ const x=drive.pos.x-fz*r+fx*f, z=drive.pos.z+fx*r+fz*f, gg=groundAt(x,z,g+0.6);
-    if(Math.abs(gg-g)<1&&!solidAt(x,gg+1,z,0.45)){ spot={x,z,y:gg}; break; } }
+  for(const [r,f] of [[-1.5,-0.3],[1.5,-0.3],[-3.3,0],[3.3,0],[0,-5.4],[0,5.4],[-3.3,-3],[3.3,-3],[-3.3,3]]){ const x=drive.pos.x-fz*r+fx*f, z=drive.pos.z+fx*r+fz*f, gg=footGround(x,z,g+0.6);
+    if(Math.abs(gg-g)<1&&!solidAt(x,gg+1,z,0.45)&&!footHit(x,z,gg)){ /* M-033: not inside a park part or the water */ spot={x,z,y:gg}; break; } }
   if(!spot) spot={x:drive.pos.x-fz*3.3,z:drive.pos.z+fx*3.3,y:g};
   myCar.position.copy(drive.pos); myCar.rotation.set(0,drive.yaw,0); brake.visible=false;
   foot.on=true; foot.pitch=0.2; placeOfficer(spot.x,spot.y,spot.z,drive.yaw); foot.mesh.visible=true; foot.trim.visible=true;
@@ -4473,14 +4520,15 @@ function updateFoot(dt,t){
   foot.yaw+=turn*dt*2.3;
   const tgt=fwd>0?fwd*(run?8:4):fwd*2.5; foot.speed+=(tgt-foot.speed)*Math.min(1,dt*8);
   const fx=Math.sin(foot.yaw), fz=Math.cos(foot.yaw), dx=fx*foot.speed*dt, dz=fz*foot.speed*dt;
-  const ok=(x,z)=>!solidAt(x,p.y+1.0,z,0.4)&&(p.y>0.5||(Math.abs(x)<=halfW(z)+15&&z>-1470&&z<1600));
+  const stuck=footHit(p.x,p.z,p.y); /* M-033: park parts and water; if already inside one (a teleport), let him walk out */
+  const ok=(x,z)=>!solidAt(x,p.y+1.0,z,0.4)&&(p.y>0.5||(Math.abs(x)<=halfW(z)+15&&z>-1470&&z<1600))&&(stuck||!footHit(x,z,p.y));
   if(ok(p.x+dx,p.z)) p.x+=dx; if(ok(p.x,p.z+dz)) p.z+=dz;
   if(Math.abs(p.y-drive.pos.y)<2){ /* M-029: keep the officer out of the roadster's footprint (car-local box), so he can stand at the door */
     const cs=Math.cos(drive.yaw), sn=Math.sin(drive.yaw), cx=p.x-drive.pos.x, cz=p.z-drive.pos.z, lx=cx*cs-cz*sn, lz=cx*sn+cz*cs, hx=1.15, hz=2.45;
     if(Math.abs(lx)<hx&&Math.abs(lz)<hz){ let nx=lx, nz=lz; if(hx-Math.abs(lx)<hz-Math.abs(lz)) nx=Math.sign(lx||1)*hx; else nz=Math.sign(lz||1)*hz;
       p.x=drive.pos.x+nx*cs+nz*sn; p.z=drive.pos.z-nx*sn+nz*cs; } }
   if(walkBoard()) return; /* M-028: stepping through an open train door boards it */
-  const g=groundAt(p.x,p.z,p.y);
+  const g=footGround(p.x,p.z,p.y);
   if(p.y>g+0.02){ if(p.y-g>3&&foot.vy===0) pop('Whoa, jumping down!'); foot.vy=Math.max(-55,foot.vy-26*dt); p.y=Math.max(g,p.y+foot.vy*dt); if(p.y===g) foot.vy=0; }
   else { p.y=g; foot.vy=0; }
   /* pose: stand / walk / jog / ready (scanning or detaining) */
@@ -4493,7 +4541,7 @@ function updateFoot(dt,t){
   /* third-person camera behind the officer, pulled in when a wall is in the way */
   const cp=Math.cos(foot.pitch), D=foot.camD;
   _hfl.set(p.x,p.y+1.6,p.z);
-  let dd=D; for(let i=1;i<=10;i++){ const k=D*i/10; if(solidAt(_hfl.x-fx*cp*k,_hfl.y+Math.sin(foot.pitch)*k+0.4,_hfl.z-fz*cp*k,0.35)){ dd=Math.max(0.8,D*(i-1)/10); break; } }
+  let dd=D; for(let i=1;i<=10;i++){ const k=D*i/10; const qx=_hfl.x-fx*cp*k, qy=_hfl.y+Math.sin(foot.pitch)*k+0.4, qz=_hfl.z-fz*cp*k; if(solidAt(qx,qy,qz,0.35)||fSolid(qx,qy,qz)){ dd=Math.max(0.8,D*(i-1)/10); break; } }
   const sh=0.75*dd/D; /* over the right shoulder, so the officer never hides the robot under the crosshair */
   _hfc.set(_hfl.x-fx*cp*dd-fz*sh,_hfl.y+Math.sin(foot.pitch)*dd+0.4,_hfl.z-fz*cp*dd+fx*sh); if(_hfc.y<p.y+0.4) _hfc.y=p.y+0.4;
   camera.position.lerp(_hfc,1-Math.exp(-dt*10));
@@ -4877,6 +4925,8 @@ addEventListener('pointercancel',()=>{ foot.drag=null; });
 window.__m2140hunt={hunt,units,foot,WALK_SURFACES,placeOfficer,groundAt,heroPos,finishScan,detain,getOut,getIn,startHunt,stopHunt,ride,lift,stationAct,doAct,boardTrain,leaveTrain,toggleRideView,newCase,stationCase,refreshAct,cab,walkBoard,HZ,PITCH,CAB_H2,spawnStationBot};
 /* M-029 verification hook (tools/shot.js): drive state, keys, the car, and an instant mood switch */
 window.__m2140hunt.m029={drive,keys,myCar,toggleView,closeIntro,rs:()=>RS,rsVert,rsGround,snap(m){ target=P[m]; for(const f in cur){ if(cur[f].isColor) cur[f].copy(target[f]); else cur[f]=target[f]; } apply(); updateEnv(); }};
+/* M-033 verification hook (tools/shot.js): on-foot stepping and the park geometry the collision probe checks against */
+window.__m2140hunt.m033={updateFoot,ensureOfficer,closeIntro,drive,keys,solidAt,rkSD,rrectPts,polySD,inWater,onBow,bowY,mallAt,RINK,WAT,BOW,PKF,MALL,PARK,PROCKS,TRUNK,STATIONS,loop,TX,PG,isMobile,RS_RIDE,footGround,footHit,FGRID,PCOL};
 /* radar: unknown robots grey, scanned good robots green, scanned rogue red (kept on the rim), case area cyan, parked car blue */
 function drawHuntRadar(c,R,sc,rx,rz,fx,fz,p){
   const dot=(x,z,col,r,edge,sq)=>{ const dx=x-p.x, dz=z-p.z; let sx=sc*(rx*dx+rz*dz), sy=-sc*(fx*dx+fz*dz); const L=Math.hypot(sx,sy), lim=R-7;
