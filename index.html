@@ -1267,6 +1267,7 @@ const GD=pBuf(), SD=pBuf(), RD=pBuf(); // RD: the rink's glossy parts (ice, glaz
     pAdd(SD,gBox,cx,PG+7.12,(uz0+uz1)/2,ux1-ux0+1.2,0.3,uz1-uz0+1.2,cRoof,0);
     pAdd(RD,gBox,cx,PG+7.32,uz1+0.58,ux1-ux0+1.2,0.07,0.05,cWhite,2); [-1,1].forEach(s=>pAdd(RD,gBox,cx+s*((ux1-ux0)/2+0.63),PG+7.32,(uz0+uz1)/2,0.05,0.07,uz1-uz0+1.2,cWhite,2));
     pAdd(SD,gBox,cx,PG+4.35,hz1+1.05,hx1-hx0,0.85,0.04,K(0x9fb2bc),0.02); pAdd(SD,gBox,cx,PG+4.8,hz1+1.05,hx1-hx0+0.1,0.06,0.08,cCap,0); // roof-terrace glass rail
+    pAdd(SD,gBox,cx,PG+8.15,uz1+0.72,6.4,1.8,0.12,K(0x1a1f25),0); // M-032 session sign: dark back panel on the cafe roof (the lit face is rinkSign)
     for(let k=0;k<(isMobile?3:5);k++){ const x=ux0+2.5+k*(ux1-ux0-5)/Math.max(1,(isMobile?2:4)), z=405.4;
       pAdd(SD,gCyl16,x,PG+4.2,z,0.45,0.05,0.45,cWhite,0); pAdd(SD,gCyl,x,PG+4.55,z,0.04,1.6,0.04,cIron,0); pAdd(SD,gCone,x,PG+5.45,z,1.3,0.5,1.3,K(k%2?0xe8e2d0:0x2f5a4a),0.02); }
     // rocky outcrops (the classic view looks over them from the north-east) and the odd boulder by the house
@@ -1288,25 +1289,68 @@ parkGround.receiveShadow=true; scene.add(parkGround);
 const parkStatic=new THREE.Mesh(pGeo(SD),parkStd({roughness:0.75})); parkStatic.castShadow=true; parkStatic.receiveShadow=true; scene.add(parkStatic);
 // M-027 rink gloss (one draw): kind 0 ice = blue-white, slightly reflective, faint skate tracks and scuffs, whiter snow at the boards,
 // warm floodlit at night with a faint cyan edge light; kind 1 = rink-house glazing (dark by day, warm interior at night); kind 2 = LED crown
+/* M-032 skate-mark map: a canvas over the ice (rink-local UV, 1024x512 desktop / 512x256 phone; texels are square). R = accumulated
+   skate marks (skaters add thin curved blade lines with 'lighter'), G = wet water from the ice resurfacer (dries by 'multiply' each tick).
+   Uploaded only on a tick that drew something (every 0.25 s desktop / 0.4 s phone). */
+RINK.uHk={value:0.3}; // hockey markings strength (0.3 faint, 1 during hockey)
+const RKMK=(()=>{ const R=RINK, W=isMobile?512:1024, H=W/2, cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const g=cv.getContext('2d',{alpha:false}); g.fillStyle='#000'; g.fillRect(0,0,W,H);
+  const tex=new THREE.CanvasTexture(cv); tex.flipY=false; tex.wrapS=tex.wrapT=THREE.ClampToEdgeWrapping; tex.anisotropy=isMobile?2:4;
+  const k=W/(2*R.hx), X=x=>(x-R.x+R.hx)*k, Z=z=>(z-R.z+R.hz)*k;
+  const M={cv,g,tex,W,H,k,X,Z,dirty:false,wet:0,
+    // thin curved blade lines: two blades +-0.1 m, bowed outward by the push (bow), from (ax,az) to (bx,bz)
+    blade(ax,az,bx,bz,bow){ const dx=bx-ax, dz=bz-az, l=Math.hypot(dx,dz); if(l<0.05||l>6) return; const nx=-dz/l, nz=dx/l;
+      for(const o of [-0.1,0.1]){ const c=o>0?bow:-bow*0.4; g.moveTo(X(ax+nx*o),Z(az+nz*o)); g.quadraticCurveTo(X((ax+bx)/2+nx*(o+c)),Z((az+bz)/2+nz*(o+c)),X(bx+nx*o),Z(bz+nz*o)); } },
+    begin(a,w){ g.globalCompositeOperation='lighter'; g.strokeStyle='rgba(255,0,0,'+a+')'; g.lineWidth=w||1; g.lineCap='round'; g.beginPath(); },
+    end(){ g.stroke(); M.dirty=true; },
+    // hockey stop: a short fan of snow scraped sideways from both blades
+    spray(x,z,vx,vz){ const v=Math.hypot(vx,vz)||1, fx=vx/v, fz=vz/v; M.begin(0.32,2.2);
+      for(let i=-3;i<=3;i++){ const a=i*0.16, cx=fx*Math.cos(a)-fz*Math.sin(a), cz=fz*Math.cos(a)+fx*Math.sin(a), sx=x+cx*0.3, sz=z+cz*0.3;
+        g.moveTo(X(sx-fz*0.25),Z(sz+fx*0.25)); g.lineTo(X(sx+cx*0.55+fz*0.25),Z(sz+cz*0.55-fx*0.25)); } M.end(); },
+    // resurfacer conditioner: clear marks (R=0) and lay water (G=255) in a strip of width w (m)
+    clean(ax,az,bx,bz,w,wet){ g.globalCompositeOperation='source-over'; g.strokeStyle='rgb(0,'+Math.round(wet*255)+',0)'; g.lineWidth=w*k; g.lineCap='round';
+      g.beginPath(); g.moveTo(X(ax),Z(az)); g.lineTo(X(bx),Z(bz)); g.stroke(); M.dirty=true; M.wet=30; },
+    dry(f){ if(M.wet<=0) return; g.globalCompositeOperation='multiply'; g.fillStyle='rgb(255,'+Math.round(255*f)+',255)'; g.fillRect(0,0,W,H); M.dirty=true; },
+    flush(){ if(M.dirty){ tex.needsUpdate=true; M.dirty=false; } } };
+  // a session's worth of old marks to start with: lane-following blade arcs, deterministic from rkHash (no rand())
+  [0.65,1.4,2.2,2.9,3.6,4.4,5.0,5.8,6.6,7.5].forEach((d,li)=>{ const P=rinkLane(d), n=P.x.length-1;
+    M.begin(0.07); for(let j=0;j<5;j++){ const off=(rkHash(li*7+j,41)-0.5)*1.3;
+      for(let i=0;i<n;i++){ if(rkHash(li*977+j*131+i,42)<0.25) continue; const ax=P.x[i], az=P.z[i], bx=P.x[i+1], bz=P.z[i+1], dx=bx-ax, dz=bz-az, l=Math.hypot(dx,dz)||1, nx=-dz/l*off, nz=dx/l*off;
+        M.blade(ax+nx,az+nz,bx+nx,bz+nz,0.12*Math.sin(i*1.7+j)); } } M.end(); });
+  M.begin(0.12,1.6); for(let i=0;i<40;i++){ const x=R.x+(rkHash(i,43)-0.5)*30, z=R.z+(rkHash(i,44)-0.5)*14, a=rkHash(i,45)*6.28;
+    g.moveTo(X(x),Z(z)); g.lineTo(X(x+Math.cos(a)*0.5),Z(z+Math.sin(a)*0.5)); } M.end();
+  M.flush(); return M; })();
 const rinkGloss=(()=>{ const R=RINK, F=v=>v.toFixed(2);
   const m=new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.2,metalness:0,envMapIntensity:0.6,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-4});
-  m.onBeforeCompile=sh=>{ sh.uniforms.uPG=uPG;
+  m.onBeforeCompile=sh=>{ sh.uniforms.uPG=uPG; sh.uniforms.uMk={value:RKMK.tex}; sh.uniforms.uHk=RINK.uHk;
     sh.vertexShader='attribute float aGlow;\nvarying float vK, vY;\nvarying vec2 vRP;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvK=aGlow; vRP=position.xz; vY=position.y;');
-    sh.fragmentShader=`uniform float uPG; varying float vK, vY; varying vec2 vRP;
+    sh.fragmentShader=`uniform float uPG, uHk; uniform sampler2D uMk; varying float vK, vY; varying vec2 vRP;
 float rkH(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
 float rkN(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(rkH(i),rkH(i+vec2(1.,0.)),f.x),mix(rkH(i+vec2(0.,1.)),rkH(i+vec2(1.,1.)),f.x),f.y); }
 float rkD(vec2 p){ vec2 q=abs(p)-vec2(${F(R.hx)},${F(R.hz)})+${F(R.cr)}; return min(max(q.x,q.y),0.)+length(max(q,0.))-${F(R.cr)}; }
 `+sh.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
-  vec2 rp=vRP-vec2(${F(R.x)},${F(R.z)}); float rd=rkD(rp), scuf=0., snow=0.;
+  vec2 rp=vRP-vec2(${F(R.x)},${F(R.z)}); float rd=rkD(rp), scuf=0., snow=0., wet=0.;
   if(vK<0.5){ float n1=rkN(rp*0.28), n2=rkN(rp*2.6+5.), n3=rkN(rp*0.8+11.);
     float trk=pow(abs(sin(-rd*5.3+n1*5.)),44.)*smoothstep(0.35,0.8,n3)+pow(abs(sin(-rd*8.9+n3*7.)),60.)*smoothstep(0.5,0.85,n1)*0.7;
     float arc=pow(abs(sin(length(rp-vec2(6.,-2.))*2.2+n1*8.)),70.)*smoothstep(0.55,0.9,n2)*0.6;
-    scuf=clamp(trk*0.6+arc*0.5+(n2-0.5)*0.16,0.,1.); snow=exp(rd/0.55);
-    diffuseColor.rgb=mix(mix(vec3(0.78,0.88,0.95),vec3(0.86,0.93,0.97),n1),vec3(0.96,0.975,0.99),clamp(scuf*0.65+snow*0.7,0.,1.)); }
+    // M-032: the mark map scales the old static scuffs (fresh ice is clean) and adds its own scratches; G = resurfacer water
+    vec4 mk=texture2D(uMk,(rp+vec2(${F(R.hx)},${F(R.hz)}))/vec2(${F(2*R.hx)},${F(2*R.hz)})); float mm=smoothstep(0.,0.75,mk.r); wet=smoothstep(0.06,0.85,mk.g);
+    scuf=clamp((trk*0.6+arc*0.5)*(0.15+0.85*mm)+(n2-0.5)*0.16*(0.3+0.7*mm)+mk.r*0.75+mm*0.12,0.,1.)*(1.-0.9*wet); snow=exp(rd/0.55);
+    // painted hockey markings under the ice (faint all the time, full during hockey): red centre and goal lines, blue lines,
+    // faceoff circles and spots, centre circle, light-blue goal creases
+    vec2 ap=abs(rp); float L1=1.-smoothstep(0.03,0.06,abs(ap.x-18.6)), cr=length(vec2(ap.x-18.6,rp.y));
+    float red=max(max(1.-smoothstep(0.14,0.18,ap.x),L1),max(1.-smoothstep(0.03,0.06,abs(length(ap-vec2(14.,5.))-2.8)),1.-smoothstep(0.25,0.3,length(ap-vec2(14.,5.)))));
+    red=max(red,(1.-smoothstep(0.03,0.06,abs(cr-1.5)))*step(ap.x,18.6));
+    float blu=max(1.-smoothstep(0.14,0.18,abs(ap.x-6.5)),max(1.-smoothstep(0.03,0.06,abs(length(rp)-3.6)),1.-smoothstep(0.12,0.16,length(rp))));
+    float crs=(1.-smoothstep(1.45,1.5,cr))*step(ap.x,18.6);
+    vec3 ice=mix(vec3(0.62,0.75,0.86),vec3(0.71,0.82,0.9),n1), lk=vec3(uHk*smoothstep(-0.25,-0.5,rd));
+    ice=mix(ice,vec3(0.55,0.75,0.95),crs*lk*0.7); ice=mix(ice,vec3(0.12,0.28,0.72),blu*lk); ice=mix(ice,vec3(0.78,0.1,0.12),red*lk);
+    diffuseColor.rgb=mix(ice,vec3(0.96,0.975,0.99),clamp(scuf*0.85+snow*0.7,0.,1.));
+    diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(0.5,0.62,0.78),wet); }
   else if(vK<1.5) diffuseColor.rgb=vec3(0.06,0.08,0.1);
   else diffuseColor.rgb=vec3(0.72,0.78,0.8);`)
     .replace('#include <roughnessmap_fragment>',`#include <roughnessmap_fragment>
-  roughnessFactor=vK<0.5?mix(0.12,0.55,clamp(scuf+snow*0.6,0.,1.)):vK<1.5?0.06:0.45;`)
+  roughnessFactor=vK<0.5?mix(mix(0.12,0.55,clamp(scuf+snow*0.6,0.,1.)),0.03,wet):vK<1.5?0.06:0.45;`)
     .replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
   if(vK<0.5){ float pool=0.7+0.3*smoothstep(1.1,0.2,length(rp/vec2(${F(R.hx)},${F(R.hz)})));
     totalEmissiveRadiance+=diffuseColor.rgb*vec3(1.,0.92,0.8)*0.3*uPG*pool+vec3(0.25,0.85,1.)*0.4*uPG*exp(rd/0.3); }
@@ -1391,7 +1435,8 @@ const PCAR=[];
           2000+bits: outfits in bits (0 shirt, 1 coat, 2 dress, 3 t-shirt, 4 sport); 3000+k: accessory bit k (0 bag, 1 backpack, 2 glow trim, 3 skates: FIG_GS only)
    iStyle = (hair style, outfit, accessory bits, build -1 slim hips/shoulders .. +1 broad shoulders); iAnim = (mode, rate, phase, variant)
    modes: 0 walk, 1 jog, 2 cycle, 3 bench sit, 4 stand, 5 skate, 6 row, 8 drive, 9 ground sit, 10 ready stance; M-027 skating family:
-          11 beginner skater, 12 confident skater, 13 towed child, 14 beginner holding the wall (on the right), 15 lean on a rail, 16 sit lacing skates.
+          11 beginner skater, 12 confident skater, 13 towed child, 14 beginner holding the wall (on the right), 15 lean on a rail, 16 sit lacing skates;
+          M-032: 17 hockey skater (deep lean, both hands on the stick). Bone 8 = hockey stick (FIG_GS, accessory bit 4; not leaned, stays on the ice).
           Skate variant: floor(v*8) = hand hold (0 free, 1 right hand to a partner, 2 left hand to a partner, 4 left hand down to a child,
           5 right hand up to a parent), fract(v*8) = per-skater style. Banking comes from the instance matrix (roll); a left lean turns on crossovers.
           cycle = uTime*rate+phase.
@@ -1438,6 +1483,10 @@ function figGeo(skates){ const lo=isMobile, P=[], Nn=[], R=[], I=[], o=new THREE
     if(skates){ add(new THREE.BoxGeometry(0.012,0.05,0.31),4,11,3003,s*0.095,-0.026,0.03,1,1,1); // M-027 skate blade (steel) and boot cuff
       add(Cy(0.062,0.056,0.17,ls),3,4,3003,s*0.095,0.115,0.005,1,1,1); }
   });
+  if(skates){ // M-032 hockey stick (bone 8, accent colour, accessory bit 4): shaft from the hands down to a blade on the ice, right side
+    const T=new THREE.Vector3(-0.06,0.98,0.42), Hl=new THREE.Vector3(-0.3,0.035,1.22), d=Hl.clone().sub(T), l=d.length(), sg=new THREE.BoxGeometry(0.026,l,0.02);
+    sg.applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize()))); sg.translate((T.x+Hl.x)/2,(T.y+Hl.y)/2,(T.z+Hl.z)/2);
+    add(sg,8,5,3004,0,0,0,1,1,1); add(new THREE.BoxGeometry(0.3,0.07,0.014),8,5,3004,-0.17,0.04,1.24,1,1,1,0,-0.2,0); }
   // coat hem and skirt (follow the mean hip angle), shoulder bag + strap, backpack, glow belt
   add(Cy(0.168,0.2,0.43,ts),7,0,2000+2,0,0.8,0,1,1,0.72);
   add(Cy(0.162,0.24,0.47,ts),7,0,2000+4,0,0.775,0,1,1,0.74);
@@ -1466,7 +1515,7 @@ void skatePose(float m,float c,float v,float sl){
 #ifdef USE_INSTANCING
   bk=-instanceMatrix[0].y/max(length(instanceMatrix[0].xyz),1e-4); // >0 while banking left (all turns are left turns)
 #endif
-  bool beg=(m>10.5&&m<11.5)||m>13.5, kid=m>12.5&&m<13.5, pro=m>11.5&&m<12.5;
+  bool beg=(m>10.5&&m<11.5)||(m>13.5&&m<14.5), kid=m>12.5&&m<13.5, pro=m>11.5&&m<12.5, hk=m>16.5;
   float xo=(beg||kid)?0.:smoothstep(0.06,0.16,bk);
   float hc=c/3.14159, u=fract(hc), sd=mod(floor(hc),2.)<0.5?1.:-1.;
   float P=smoothstep(0.,0.32,u)*(1.-smoothstep(0.42,0.7,u)), Rc=sin(3.14159*clamp((u-0.42)/0.38,0.,1.));
@@ -1475,6 +1524,7 @@ void skatePose(float m,float c,float v,float sl){
   if(pro){ hb=0.6; kb=1.12; ph=-0.34; pg=0.48; amp=mix(0.32,0.62,st); lean=0.36; }
   if(beg){ hb=0.36; kb=0.72; ph=-0.04; pk=0.5; pg=0.16; pt=0.32; amp=0.; lean=0.4; hpt=0.3; }
   if(kid){ hb=0.3; kb=0.55; P=0.; Rc=0.; amp=0.; lean=0.15; hpt=0.1; }
+  if(hk){ hb=0.8; kb=1.32; ph=-0.3; pk=0.18; pg=0.55; pt=0.55; amp=0.; lean=0.55; hpt=-0.3; } // M-032 hockey: low, deep lean, eyes up
   float pH=mix(hb,ph,P)+0.3*Rc, pK=mix(kb,pk,P)+0.75*Rc, pG=pg*P+0.08*Rc, pT=pt*P+0.15*Rc, gH=hb+0.06*P, gK=kb+0.12*P, gG=0.03*P, gT=0.1*P;
   // crossovers while banking left: the right (outer) leg recovers across in front, the left (inner) leg pushes out under the body
   if(sd<0.){ pG=mix(pG,pg*P-0.5*Rc,xo); pH+=0.18*xo*Rc; } else { pG=mix(pG,-0.3*P,xo); pT=mix(pT,0.05,xo); }
@@ -1491,12 +1541,13 @@ void skatePose(float m,float c,float v,float sl){
   else if(code>1.5&&code<2.5){ aL=0.22; eL=0.25; bL=0.32; zL=0.; }
   else if(code>3.5&&code<4.5){ aL=-0.32; eL=0.12; bL=0.2; zL=0.; }
   else if(code>4.5){ aR=1.15; eR=0.15; bR=0.3; zR=0.; }
+  if(hk){ float w=sin(uT*2.6+st*40.); aR=1.05+0.12*w; eR=0.45; aL=0.78-0.1*w; eL=1.0; zR=0.1; zL=0.45; bL=0.; bR=0.; twC=-0.12*w; dx=0.; rol*=0.5; }
 }
 void figPose(){
   float m=iAnim.x, c=uT*iAnim.y+iAnim.z, v=iAnim.w, s=sin(c), co=cos(c), sl=sin(uT*0.31+v*40.), fc=1., plant=1.;
   hL=0.; hR=0.; kL=0.06; kR=0.06; aL=0.04; aR=0.04; eL=0.18; eR=0.18; lean=0.; twP=0.; twC=0.; hyw=0.; hpt=0.; dy=0.; dx=0.; abd=0.07;
   gL=0.; gR=0.; tL=0.; tR=0.; bL=0.; bR=0.; zL=0.; zR=0.; rol=0.; dz=0.;
-  if((m>4.5&&m<5.5)||(m>10.5&&m<14.5)) skatePose(m,c,v,sl);
+  if((m>4.5&&m<5.5)||(m>10.5&&m<14.5)||(m>16.5&&m<17.5)) skatePose(m,c,v,sl);
   else if(m>15.5){ hL=1.5; hR=1.35; kL=1.75; kR=1.0; lean=0.6; aL=0.95; aR=0.95; eL=0.25+0.15*sin(uT*4.+v*9.); eR=0.25+0.15*sin(uT*4.6+v*5.); abd=0.12; zL=0.15; zR=0.15;
     hpt=0.35; dy=-0.84; dz=-0.13; plant=0.; }
   else if(m>14.5){ float w=sin(uT*0.4+v*20.); hL=0.08; hR=0.1+0.06*max(0.,w); kL=0.12; kR=0.14+0.2*max(0.,w); tL=0.15; tR=0.1; lean=0.42; aL=-0.1; aR=-0.1; eL=1.3; eR=1.3;
@@ -1520,9 +1571,10 @@ void figPose(){
 }
 void figSkin(out vec3 p,out vec3 n){
   figPose(); p=position; n=normal; float b=aRig.x, sg=p.x>0.?1.:-1., bw=iStyle.w, L=step(0.,p.x);
-  if(b<0.5||b>6.5) p.x*=1.+bw*(0.08*smoothstep(1.12,1.38,p.y)*step(p.y,1.47)-0.07*(1.-smoothstep(0.96,1.12,p.y)));
+  if(b<0.5||(b>6.5&&b<7.5)) p.x*=1.+bw*(0.08*smoothstep(1.12,1.38,p.y)*step(p.y,1.47)-0.07*(1.-smoothstep(0.96,1.12,p.y)));
   vec3 HC=vec3(0.,0.92,0.);
-  if(b>1.5&&b<4.5){ float h=mix(hR,hL,L), k=mix(kR,kL,L), f=mix(fR,fL,L), ga=mix(gR,gL,L), ta=mix(tR,tL,L);
+  if(b>7.5){ float sw=(iAnim.x>16.5?0.22:0.07)*sin(uT*2.6+iAnim.w*40.); p=rY(p,sw); n=rY(n,sw); p.y-=dy; } // M-032 stick: stickhandling sway, blade stays on the ice
+  else if(b>1.5&&b<4.5){ float h=mix(hR,hL,L), k=mix(kR,kL,L), f=mix(fR,fL,L), ga=mix(gR,gL,L), ta=mix(tR,tL,L);
     p.x-=sg*0.0066*bw; vec3 HP=vec3(sg*0.095*(1.-0.07*bw),0.92,0.), KN=HP-vec3(0.,0.42,0.), AN=KN-vec3(0.,0.42,0.);
     if(b>3.5){ p=AN+rX(p-AN,f); n=rX(n,f); }
     if(b>2.5){ p=KN+rX(p-KN,-k); n=rX(n,-k); }
@@ -1691,13 +1743,21 @@ const RKP=[], RKM=[];
   // static: resting at the boards on the ice (facing the boards), leaning on the boards from the walkway, terrace rail, benches
   const st=(P,s,lat,face,mode,sk)=>{ const a={pa:P,s,lat,dir:1,k:0}; pSample(a); return add({mode,rate:1,ph:0,v:Hh(RKP.length,12),sc:0.95+0.1*Hh(RKP.length,13),sk,x:SPo.x,y:PG+0.08,z:SPo.z,yaw:SPo.yaw+face}); };
   RINK.stand=[];
-  for(let i=0;i<NQ(2);i++){ const s=RKL[0].len*(0.18+0.5*i+0.07*Hh(i,14)); RINK.stand.push(s); st(RKL[0],s,-0.22,-Math.PI/2,15,1); }
+  for(let i=0;i<NQ(2);i++){ const s=RKL[0].len*(0.18+0.5*i+0.07*Hh(i,14)); RINK.stand.push(s); st(RKL[0],s,-0.22,-Math.PI/2,15,1).ice=1; }
   for(let i=0;i<NQ(2);i++){ const a=st(RKL[0],RKL[0].len*(0.42+0.37*i),-1.33,Math.PI/2,15,0); a.y=PG+0.05; }
   RINK.rail.slice(0,NQ(4)).forEach((r,i)=>add({mode:15,rate:1,ph:0,v:Hh(i,15),sc:0.95+0.1*Hh(i,16),sk:0,x:r.x,y:r.y,z:r.z,yaw:r.yaw}));
   RINK.seats.slice(0,NQ(5)).forEach((r,i)=>add({mode:i===3?3:16,rate:1,ph:0,v:i===3?0.5:Hh(i,17),sc:0.95+0.1*Hh(i,18),sk:i===3?0:1,x:r.x,y:r.y,z:r.z,yaw:r.yaw}));
 }
+// M-032: hockey players (two teams of a goalie + NQ(5) skaters; helmets = caps in the accent colour, sticks = accessory bit 4) and the
+// ice-resurfacer driver, as extra instances of the same rink-people draw (hidden while off duty)
+const RKH=[];
+for(let t=0;t<2;t++) for(let j=0;j<=NQ(5);j++){ const q=j+t*9, a={i:RKP.length,team:t,role:j,gk:j===0,hk:1,mode:j===0?10:17,rate:2.5+0.4*rkHash(q,61),ph:rkHash(q,62)*6.28,
+  v:rkHash(q,63)*0.124,sc:j===0?1.06:0.96+0.07*rkHash(q,64),sk:1,px:0,pz:0,vx:0,vz:0,yaw:0,bank:0,st:0,cool:0,dly:0.45*j+0.2*t}; RKP.push(a); RKH.push(a); }
+const RKDRV={i:RKP.length,mode:8,rate:1,ph:0,v:0.5,sc:1,sk:0,drv:1}; RKP.push(RKDRV);
 const RK_TOP=[0xb3262a,0x1d2733,0x2b5f8a,0xe4e6ea,0x5a3b7a,0x1f6f5c,0xd94f8a,0x22a3c4,0xe86a3a,0x3c3c44,0xc9a44a,0xf0ece4].map(C);
 const rinkPeopleM=mkPeople(RKP.length,'rinkPeople',i=>{ const a=RKP[i], H=k=>rkHash(i+700,k);
+  if(a.hk||a.drv){ const f=figLook(9000+i,{top:C(a.drv?0x2b5f8a:a.team?0xeef0f2:0xc4202b),bot:C(a.drv?0x23262b:a.team?0x1c2a4a:0x141418),skin:FIG_SKIN[Math.floor(H(3)*8)],
+      mode:a.mode,rate:a.rate,ph:a.ph,hs:4,of:0,acc:C(a.drv?0xe8a020:a.team?0x1c2a4a:0x111214)}); f.v=a.v; f.ac=a.hk?8|16:0; return f; }
   const f=figLook(9000+i,{top:RK_TOP[Math.floor(H(1)*RK_TOP.length)],bot:PANT[Math.floor(H(2)*PANT.length)],skin:FIG_SKIN[Math.floor(H(3)*8)],mode:a.mode,rate:a.rate,ph:a.ph,
     hs:H(4)<0.3?4:undefined});
   f.v=a.v; if(a.sk) f.ac=(f.ac&~1)|8; return f; },FIG_GS);
@@ -1705,16 +1765,214 @@ function pmR(a,i,x,y,z,yaw,roll,s){ const cy=Math.cos(yaw), sy=Math.sin(yaw), cr
   a[o]=cr*cy*s; a[o+1]=sr*s; a[o+2]=-cr*sy*s; a[o+3]=0; a[o+4]=-sr*cy*s; a[o+5]=cr*s; a[o+6]=sr*sy*s; a[o+7]=0;
   a[o+8]=sy*s; a[o+9]=0; a[o+10]=cy*s; a[o+11]=0; a[o+12]=x; a[o+13]=y; a[o+14]=z; a[o+15]=1; }
 RKP.forEach(a=>{ if(a.x!==undefined) pmR(rinkPeopleM.instanceMatrix.array,a.i,a.x,a.y,a.z,a.yaw,0,a.sc); });
+RKH.concat([RKDRV]).forEach(a=>rinkPeopleM.instanceMatrix.array.fill(0,a.i*16,a.i*16+16));
 function updateRink(step,t){ const A=rinkPeopleM.instanceMatrix.array, S0=RINK.stand, L0=RKL[0].len;
+  rinkSession(step,t);
   for(const a of RKM){ const c=t*a.rate+a.ph, u=((c/Math.PI)%1+1)%1, beg=a.mode===11||a.mode===14;
     const surge=beg?0.3*Math.sin(u*Math.PI)-0.191:(u<0.4?Math.sin(u/0.4*Math.PI):0)-0.255, v=a.sp*(1+0.55*surge); // push surge, then the glide slows; mean = sp
     if(a.pairOf){ a.s=a.pairOf.s; } else a.s=((a.s+v*step)%a.pa.len+a.pa.len)%a.pa.len;
+    if(a.st) continue; // M-032: off the ice or on the way (rinkPublic); the lane slot keeps moving so everyone comes back evenly spaced
     if(a.mode===14){ let near=9; S0.forEach(s=>{ let d=s-a.s; d-=Math.round(d/L0)*L0; near=Math.min(near,Math.abs(d)); }); a.lat=0.85*(1-Math.min(1,Math.max(0,(near-0.7)/1.6))); }
     pSample(a); const P=a.pa, kap=P.k[a.k]||0, tb=Math.min(0.34,Math.atan(v*v*kap/9.8)*1.3); a.bank+=(tb-a.bank)*Math.min(1,step*3);
     pmR(A,a.i,SPo.x,SPo.y,SPo.z,SPo.yaw,-a.bank,a.sc); a.x=SPo.x; a.z=SPo.z; a.yaw=SPo.yaw; }
-  RKP.forEach(a=>{ if(!a.tow) return; const p=a.tow, s=Math.sin(p.yaw), c=Math.cos(p.yaw); // the child glides just behind the parent's left hand
-    pmR(A,a.i,p.x-s*0.42+c*0.5,PG+0.08,p.z-c*0.42-s*0.5,p.yaw,-p.bank*0.6,a.sc); });
+  rinkPublic(step,t,A); rinkHockey(step,t,A); rinkMachine(step,t,A); rinkMarks(step,t);
+  RKP.forEach(a=>{ if(!a.tow) return; const p=a.tow, s=Math.sin(p.yaw), c=Math.cos(p.yaw), w=p.st===2||p.st===4, sd=p.st===3; // the child glides just behind the parent's left hand
+    rkAnim(a,sd?4:w?0:13,w?6.2:1); pmR(A,a.i,p.x-s*0.42+c*0.5,w||sd?PG+0.05:PG+0.08,p.z-c*0.42-s*0.5,p.yaw,-p.bank*0.6,a.sc); });
+  if(RKS.animDirty){ rinkPeopleM.geometry.attributes.iAnim.needsUpdate=true; RKS.animDirty=false; }
   rinkPeopleM.instanceMatrix.needsUpdate=true; }
+/* ---------- M-032 rink sessions: public skate -> resurface -> hockey -> resurface, looping. The session clock advances with the frame
+   step (Night biases the loop towards hockey). Skaters leave through the gate and wait at the boards outside (the players go back into
+   the rink house); the ice resurfacer comes out of the rink house, drives overlapping laps that work inward and wipes the mark map under
+   its conditioner, leaving a wet strip that dries in ~20 s. Live behaviour uses Math.random only (never rand()/prand()).
+   Draws up close: rinkMachine (+shadow on desktop) during resurfacing, rinkKit (goals + puck) around hockey, rinkSign; all hidden
+   beyond the LIFE distance, like the rink people. Players and the driver are extra instances of rinkPeople. */
+const RKS={sess:0,tt:40,dur:150,far:false,animDirty:false,score:[0,0],sign:'',MS:14,mEnd:0,uPk:{value:new THREE.Vector3()},mk:0,sprays:[],condNow:null,condPrev:null,
+  hk:{ph:'fo',timer:3,pk:{x:RINK.x,z:RINK.z,vx:0,vz:0,car:null,no:null,noT:0}}};
+const RK_GI=[RINK.x,RINK.z-RINK.hz+0.7], RK_GO=[RINK.x,RINK.z-RINK.hz-1.5], RK_DOOR=[RINK.x,406.7];
+const RKO=rinkLane(-1.5); { let b=1e9; RKO.x.forEach((x,i)=>{ const d=Math.hypot(x-RK_GO[0],RKO.z[i]-RK_GO[1]); if(d<b){ b=d; RKO.gs=RKO.L[i]; } }); }
+function rkSD(x,z){ const R=RINK, qx=Math.abs(x-R.x)-R.hx+R.cr, qz=Math.abs(z-R.z)-R.hz+R.cr; return Math.min(Math.max(qx,qz),0)+Math.hypot(Math.max(qx,0),Math.max(qz,0))-R.cr; }
+function rkKeepIn(a,m){ const d=rkSD(a.x,a.z); if(d<=-m) return; const e=0.05, gx=rkSD(a.x+e,a.z)-rkSD(a.x-e,a.z), gz=rkSD(a.x,a.z+e)-rkSD(a.x,a.z-e), l=Math.hypot(gx,gz)||1, nx=gx/l, nz=gz/l;
+  a.x-=nx*(d+m); a.z-=nz*(d+m); const vn=a.vx*nx+a.vz*nz, k=a.bounce?1.6:1; if(vn>0){ a.vx-=vn*nx*k; a.vz-=vn*nz*k; } }
+function rkAnim(a,mode,rate){ const B=rinkPeopleM.geometry.attributes.iAnim.array, o=a.i*4; if(B[o]!==mode||B[o+1]!==rate){ B[o]=mode; B[o+1]=rate; RKS.animDirty=true; } }
+function rkGo(a,tx,tz,sp,step){ const dx=tx-a.x, dz=tz-a.z, d=Math.hypot(dx,dz); if(d<0.04) return true; const m=Math.min(d,sp*step); a.x+=dx/d*m; a.z+=dz/d*m;
+  let dy=Math.atan2(dx,dz)-a.yaw; dy=Math.atan2(Math.sin(dy),Math.cos(dy)); a.yaw+=dy*Math.min(1,step*7); return d<=sp*step+0.04; }
+function rkDur(s){ let n=false; try{ n=modeName()==='night'; }catch(e){} return s===0?(n?110:150):s===2?(n?190:150):RKS.mEnd+4; }
+function rkEnter(s){ RKS.sess=s; RKS.tt=0; RKS.dur=rkDur(s); if(s===2){ RKS.score=[0,0]; RKS.hk.ph='fo'; RKS.hk.timer=3.5; } }
+function rinkSession(step,t){ RKS.far=!drive.on&&camera.position.distanceTo(controls.target)>900;
+  RKS.tt+=step; if(RKS.tt>=RKS.dur) rkEnter((RKS.sess+1)%4);
+  const s=RKS.sess, tt=RKS.tt, done=tt>RKS.mEnd+0.5, res=s===1||s===3;
+  RKS.pubOn=s===0||(s===3&&done); RKS.hkOn=s===2||(s===1&&done); RKS.goals=RKS.hkOn||(s===3&&tt<RKS.MS-2);
+  RINK.uHk.value+=((RKS.hkOn?1:0.3)-RINK.uHk.value)*Math.min(1,step*0.5);
+  rinkKit.visible=!RKS.far&&RKS.goals; rinkSign.visible=!RKS.far;
+  const txt=RKS.pubOn?'PUBLIC SKATE':res&&!done?'RESURFACING':s===1?'HOCKEY  WARM-UP':'HOCKEY  '+RKS.score[0]+' – '+RKS.score[1];
+  if(txt!==RKS.sign){ RKS.sign=txt; rinkSignDraw(txt); } }
+// public skaters: 0 skating, 1 skating to the gate, 2 walking out along the boards, 3 standing at the boards (watching), 4 walking back,
+// 6 gate -> ice, 5 rejoining the lane slot (or resting spot)
+const RKPUB=RKP.filter(a=>(RKM.includes(a)||a.ice)&&!a.tow);
+RKPUB.forEach((a,j)=>{ a.st=0; a.mode0=a.mode; a.rate0=a.rate; a.home=a.ice?[a.x,a.z,a.yaw]:null; a.dly=0.25*j; a.ow={pa:RKO,s:RKO.gs,lat:0,dir:1,k:0};
+  a.offS=((RKO.gs+(j%2?1:-1)*(3.2+1.25*Math.floor(j/2)))%RKO.len+RKO.len)%RKO.len; });
+RKM.forEach(a=>{ if(a.pairOf) a.dly=a.pairOf.dly; });
+function rkLoopWalk(a,to,step){ const ow=a.ow, L=RKO.len, d=((to-ow.s+L*1.5)%L)-L/2, m=Math.min(Math.abs(d),1.4*step);
+  ow.s=((ow.s+Math.sign(d)*m)%L+L)%L; ow.dir=Math.sign(d)||1; ow.lat=0; pSample(ow); return Math.abs(d)<0.02; }
+function rinkPublic(step,t,A){ const want=RKS.pubOn;
+  for(const a of RKPUB){ if(a.x===undefined){ pSample(a); a.x=SPo.x; a.z=SPo.z; a.yaw=SPo.yaw; }
+    let y=PG+0.08;
+    if(a.st===0){ if(want||RKS.tt<a.dly) continue; a.st=1; rkAnim(a,a.mode0===14||a.mode0===15?11:a.mode0,a.rate0); }
+    if(a.st===1){ if(want) a.st=5; else if(rkGo(a,RK_GI[0],RK_GI[1],3.2,step)){ a.st=2; a.wg=0; a.ow.s=RKO.gs; rkAnim(a,0,6.2); } }
+    else if(a.st===2){ y=PG+0.05; if(want) a.st=4; else if(!a.wg){ if(rkGo(a,RK_GO[0],RK_GO[1],1.4,step)) a.wg=1; }
+      else { const end=rkLoopWalk(a,a.offS,step); a.x=SPo.x; a.z=SPo.z; a.yaw=SPo.yaw; if(end){ a.st=3; rkAnim(a,15,1); } } }
+    else if(a.st===3){ y=PG+0.05; if(want){ a.st=4; rkAnim(a,0,6.2); } else { const ow=a.ow; ow.dir=1; ow.lat=0.8; pSample(ow); const fy=SPo.yaw+Math.PI/2; if(rkGo(a,SPo.x,SPo.z,1,step)) a.yaw=fy; } }
+    if(a.st===4){ y=PG+0.05; if(!want){ a.st=2; a.wg=1; rkAnim(a,0,6.2); } else { const end=rkLoopWalk(a,RKO.gs,step);
+        if(rkGo(a,SPo.x,SPo.z,2.5,step)&&end){ a.st=6; rkAnim(a,a.mode0===14||a.mode0===15?11:a.mode0,a.rate0); } } }
+    else if(a.st===6){ if(rkGo(a,RK_GI[0],RK_GI[1],1.6,step)) a.st=5; }
+    else if(a.st===5){ if(!want){ a.st=1; } else { let tx,tz,ty; if(a.home){ tx=a.home[0]; tz=a.home[1]; ty=a.home[2]; } else { pSample(a); tx=SPo.x; tz=SPo.z; ty=SPo.yaw; }
+        if(rkGo(a,tx,tz,(a.sp||1)+2.4,step)){ a.st=0; rkAnim(a,a.mode0,a.rate0); a.yaw=ty; if(a.home) pmR(A,a.i,tx,PG+0.08,tz,ty,0,a.sc); continue; } } }
+    a.bank*=0.9; pmR(A,a.i,a.x,y,a.z,a.yaw,0,a.sc); } }
+// hockey: players walk out of the rink-house door, through the gate, warm up after the resurface, play, then go back inside.
+// Simple play: the puck carrier skates at the far goal and weaves, passes or shoots; the nearest opponent chases and poke-checks;
+// goalies hold the crease and save most shots; shots and hard stops spray snow into the mark map. Goals update the sign.
+const RK_ROLE=[[0.8,0],[7.5,3.5],[1.2,-4],[1.2,4],[7.5,-3.5]]; // [metres back towards own goal, side] at a faceoff: C, LD, RW, LW, RD
+function rkBlade(a,out){ const sw=0.22*Math.sin(uTime.value*2.6+a.v*40), lx=-0.1, lz=1.32*a.sc, c=Math.cos(sw), s=Math.sin(sw), x=lx*c+lz*s, z=lz*c-lx*s, cy=Math.cos(a.yaw), sy=Math.sin(a.yaw);
+  out.x=a.x+cy*x+sy*z; out.z=a.z-sy*x+cy*z; }
+function rinkHockey(step,t,A){ const R=RINK, H=RKS.hk, pk=H.pk, want=RKS.hkOn, play=RKS.sess===2;
+  for(const a of RKH){ let y=PG+0.08;
+    if(a.st===0){ if(!want||RKS.tt<a.dly+(RKS.sess===1?RKS.mEnd:0)){ A.fill(0,a.i*16,a.i*16+16); continue; } a.st=1; a.x=RK_DOOR[0]; a.z=RK_DOOR[1]-0.4; a.yaw=0; a.vx=a.vz=0; rkAnim(a,0,6.2); }
+    if(a.st===1){ y=PG+0.05; if(rkGo(a,RK_GO[0],RK_GO[1],1.5,step)){ a.st=2; rkAnim(a,a.gk?10:17,a.rate); } }
+    else if(a.st===2){ if(rkGo(a,RK_GI[0],RK_GI[1],2.2,step)){ a.st=3; a.vx=0; a.vz=2; } }
+    else if(a.st===3){ if(!want){ a.st=4; rkAnim(a,17,a.rate); if(pk.car===a) pk.car=null; } }
+    if(a.st===4){ if(rkGo(a,RK_GI[0],RK_GI[1],4,step)){ a.st=5; rkAnim(a,0,6.2); } }
+    else if(a.st===5){ y=PG+0.05; if(rkGo(a,RK_GO[0],RK_GO[1],1.5,step)) a.st=7; }
+    else if(a.st===7){ y=PG+0.05; if(rkGo(a,RK_DOOR[0],RK_DOOR[1]-0.4,1.5,step)){ a.st=0; A.fill(0,a.i*16,a.i*16+16); continue; } }
+    if(a.st!==3) pmR(A,a.i,a.x,y,a.z,a.yaw,0,a.sc); }
+  // puck
+  H.timer-=step; pk.noT-=step;
+  if(play){
+    if(H.ph==='fo'){ pk.x=R.x; pk.z=R.z; pk.vx=pk.vz=0; pk.car=null; if(H.timer<=0){ H.ph='play'; pk.vx=(Math.random()-0.5)*3; pk.vz=(Math.random()-0.5)*3; } }
+    else if(H.ph==='goal'){ if(H.timer<=0){ H.ph='fo'; H.timer=3; } }
+    else if(pk.car){ const c=pk.car; if(c.st!==3) pk.car=null; else { rkBlade(c,pk); pk.vx=c.vx; pk.vz=c.vz; c.dec-=step; const At=c.team?-1:1;
+      for(const o of RKH){ if(o.st!==3||o.team===c.team||o.gk) continue; if(Math.hypot(o.x-c.x,o.z-c.z)<1.0&&Math.random()<step*0.9){ // poke check
+        pk.car=null; pk.vx=(Math.random()-0.5)*8; pk.vz=(Math.random()-0.5)*8; pk.no=c; pk.noT=0.5; RKS.sprays.push([o.x,o.z,o.vx,o.vz]); break; } }
+      if(pk.car&&c.dec<=0){ const gx=R.x+At*18.6, dG=Math.hypot(gx-c.x,R.z-c.z), r=Math.random(), mates=RKH.filter(o=>o.st===3&&o.team===c.team&&o!==c&&!o.gk);
+        if(!c.gk&&dG<11&&Math.abs(c.z-R.z)<7&&r<0.55){ const tz=R.z+(Math.random()-0.5)*1.7, dx=gx-pk.x, dz=tz-pk.z, l=Math.hypot(dx,dz)||1, sp=18+Math.random()*5;
+          pk.vx=dx/l*sp; pk.vz=dz/l*sp; pk.car=null; pk.no=c; pk.noT=0.35; RKS.sprays.push([c.x,c.z,c.vx,c.vz]); }
+        else if(mates.length&&(c.gk||r<0.75)){ const m=mates[Math.floor(Math.random()*mates.length)], dx=m.x+m.vx*0.5-pk.x, dz=m.z+m.vz*0.5-pk.z, l=Math.hypot(dx,dz)||1, sp=Math.min(15,7+l*0.6);
+          pk.vx=dx/l*sp; pk.vz=dz/l*sp; pk.car=null; pk.no=c; pk.noT=0.3; }
+        else c.dec=0.4+Math.random()*0.6; } } }
+    if(H.ph==='play'&&!pk.car){ const ox=pk.x; pk.x+=pk.vx*step; pk.z+=pk.vz*step; const f=Math.exp(-0.35*step); pk.vx*=f; pk.vz*=f;
+      const lz=pk.z-R.z, olx=ox-R.x;
+      for(const g of RKH){ if(!g.gk||g.st!==3) continue; const gs=g.team?1:-1, glx=g.x-R.x; // goalie saves (team 0 defends -x)
+        if(pk.vx*gs>3&&(olx-glx)*gs<=0&&(pk.x-R.x-glx)*gs>0&&Math.abs(pk.z-g.z)<0.8&&Math.random()<0.75){
+          if(Math.random()<0.4){ pk.car=g; g.dec=0.9; } else { pk.vx=-pk.vx*0.35; pk.vz=(Math.random()-0.5)*9; pk.x=g.x-gs*0.3; } pk.no=g; pk.noT=0.3; break; } }
+      const nlx=pk.x-R.x;
+      if(!pk.car&&Math.abs(nlx)>=18.6&&Math.abs(olx)<18.6&&Math.abs(lz)<0.9){ H.ph='goal'; H.timer=3; RKS.score[nlx>0?0:1]++; pk.x=R.x+Math.sign(nlx)*19.1; pk.vx=pk.vz=0; }
+      else if(Math.abs(nlx)>18.6&&Math.abs(nlx)<19.75&&Math.abs(lz)<1.05&&Math.abs(olx)>=18.6){ pk.x=R.x+Math.sign(nlx)*19.8; pk.vx=Math.abs(pk.vx)*0.5*Math.sign(nlx); }
+      pk.bounce=1; rkKeepIn(pk,0.08);
+      if(H.ph==='play'&&!pk.car) for(const o of RKH){ if(o.st!==3||(o===pk.no&&pk.noT>0)) continue;
+        if(Math.hypot(o.x-pk.x,o.z-pk.z)<(o.gk?0.7:0.9)&&(!o.gk||Math.hypot(pk.vx,pk.vz)<5)){ pk.car=o; o.dec=0.3+Math.random()*1.1; break; } } }
+  }
+  RKS.uPk.value.set(pk.x,pk.z,play?1:0);
+  // skaters: targets, steering, then spacing, goal nets, boards and pose
+  let ch0=null, ch1=null, b0=1e9, b1=1e9;
+  for(const a of RKH){ if(a.st!==3||a.gk) continue; const d=Math.hypot(a.x-pk.x,a.z-pk.z); if(a.team){ if(d<b1){ b1=d; ch1=a; } } else if(d<b0){ b0=d; ch0=a; } }
+  for(const a of RKH){ if(a.st!==3) continue; const At=a.team?-1:1, i=a.role; let tx,tz,sp;
+    if(a.gk){ tx=R.x-At*17.9; tz=R.z+Math.max(-0.7,Math.min(0.7,(pk.z-R.z)*0.3)); sp=2.5; }
+    else if(!play){ tx=R.x-At*9+Math.cos(t*0.45+i*1.3)*6; tz=R.z+Math.sin(t*0.45+i*1.3)*5; sp=4.5; } // warm-up laps in their own half
+    else if(H.ph!=='play'){ const r=RK_ROLE[(i-1)%5]; if(H.ph==='goal'){ tx=R.x+(pk.x>R.x?1:-1)*(9+i)+(i%2?2:-2); tz=R.z+r[1]; sp=3; } else { tx=R.x-At*r[0]; tz=R.z+r[1]*At; sp=4.5; } }
+    else if(pk.car===a){ tx=R.x+At*17.5; tz=R.z+Math.sin(t*0.8+i*2)*3.5*Math.min(1,Math.max(0.2,(17.5-At*(a.x-R.x))/10)); sp=6.2; }
+    else if((a===ch0||a===ch1)&&!(pk.car&&pk.car.team===a.team)){ tx=pk.x+pk.vx*0.25; tz=pk.z+pk.vz*0.25; sp=7; }
+    else { const r=RK_ROLE[(i-1)%5], own=pk.car&&pk.car.team===a.team, fx=r[0]>3?(own?-7:-9):(own?3.5:-2);
+      tx=Math.max(R.x-16.5,Math.min(R.x+16.5,pk.x+At*fx)); tz=R.z+r[1]*1.3*At+(pk.z-R.z)*0.3+Math.sin(t*0.5+i)*1.2; sp=5.2; }
+    const dx=tx-a.x, dz=tz-a.z, d=Math.hypot(dx,dz)||1e-6, ds=sp*Math.min(1,d/2.5), ux=dx/d*ds-a.vx, uz=dz/d*ds-a.vz, ul=Math.hypot(ux,uz), am=(a.gk?6:9)*step, f=ul>am?am/ul:1;
+    const v0=Math.hypot(a.vx,a.vz); a.cool-=step;
+    if(ul>am&&v0>4&&a.cool<=0&&(ux*a.vx+uz*a.vz)<-0.6*ul*v0){ RKS.sprays.push([a.x,a.z,a.vx,a.vz]); a.cool=1.5; } // hard stop: snow spray
+    a.vx+=ux*f; a.vz+=uz*f; a.x+=a.vx*step; a.z+=a.vz*step; }
+  for(let p=0;p<RKH.length;p++){ const a=RKH[p]; if(a.st!==3) continue;
+    for(let q=p+1;q<RKH.length;q++){ const b=RKH[q]; if(b.st!==3) continue; const dx=b.x-a.x, dz=b.z-a.z, d=Math.hypot(dx,dz); if(d<0.85&&d>1e-4){ const m=(0.85-d)/2/d; a.x-=dx*m; a.z-=dz*m; b.x+=dx*m; b.z+=dz*m; } }
+    const lx=a.x-R.x, lz=a.z-R.z; if(!a.gk&&Math.abs(lx)>18.4&&Math.abs(lx)<19.9&&Math.abs(lz)<1.25) a.z=R.z+Math.sign(lz||1)*1.25;
+    a.bounce=0; rkKeepIn(a,0.45);
+    const v=Math.hypot(a.vx,a.vz), ty=a.gk?(a.team?-Math.PI/2:Math.PI/2):v>0.6?Math.atan2(a.vx,a.vz):Math.atan2(pk.x-a.x,pk.z-a.z);
+    let dy=ty-a.yaw; dy=Math.atan2(Math.sin(dy),Math.cos(dy)); const w=dy*Math.min(1,step*7); a.yaw+=w;
+    const tb=a.gk?0:Math.max(-0.38,Math.min(0.38,Math.atan(v*w/Math.max(step,1e-3)/9.8)*1.2)); a.bank+=(tb-a.bank)*Math.min(1,step*4);
+    if(!a.gk){ const fast=v>1.4||(a.fast&&v>0.9); rkAnim(a,fast?17:10,a.rate); a.fast=fast; }
+    pmR(A,a.i,a.x,PG+0.08,a.z,a.yaw,-a.bank,a.sc); } }
+// shared material for the resurfacer and the hockey kit: vertex colours; aGlow <= 0.86 lamps, 5 = rotating amber beacon, 7 = puck
+// (moved by uPk = (x, z, shown) in the vertex shader, so the kit stays one draw)
+const rkKitMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.5,metalness:0.1,vertexColors:true});
+rkKitMat.onBeforeCompile=sh=>{ sh.uniforms.uT=uTime; sh.uniforms.uPk=RKS.uPk; sh.uniforms.uPG=uPG;
+  sh.vertexShader='uniform vec3 uPk;\nattribute float aGlow;\nvarying float vGlow;\nvarying vec3 vLP;\n'+sh.vertexShader.replace('#include <begin_vertex>',
+    `#include <begin_vertex>\nvGlow=aGlow; vLP=position; if(aGlow>6.5){ transformed.xz+=uPk.xy-vec2(${RINK.x.toFixed(1)},${RINK.z.toFixed(1)}); transformed.y-=2.*(1.-step(0.5,uPk.z)); }`);
+  sh.fragmentShader='uniform float uT, uPG;\nvarying float vGlow;\nvarying vec3 vLP;\n'+sh.fragmentShader.replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
+  if(vGlow>4.5&&vGlow<5.5) totalEmissiveRadiance+=vec3(1.,0.55,0.08)*(0.15+0.71*pow(max(0.,cos(atan(vLP.x,vLP.z-0.55)-uT*7.)),4.));
+  else if(vGlow<4.5) totalEmissiveRadiance+=vColor.rgb*(vGlow>0.3?vGlow:vGlow+0.2*uPG);`); }; // lamps <=0.86; the rest gets a little floodlight fill at night
+// hockey goals (red frame, white net) at both goal lines + the puck; only shown around hockey sessions
+const rinkKit=(()=>{ const D=pBuf(), R=RINK, y0=PG+0.08, red=C(0xd01c22), net=C(0xe4e8ec), L=Math.hypot(0.3,1.2), ang=Math.atan2(0.3,1.2);
+  [-1,1].forEach(s=>{ const gx=R.x+s*18.6, bx=gx+s*1.0;
+    [-1,1].forEach(k=>{ pAdd(D,gCyl16,gx,y0+0.61,R.z+k*0.915,0.03,1.22,0.03,red,0.05); pAdd(D,gBox,(gx+bx)/2,y0+0.02,R.z+k*0.915,1.0,0.04,0.05,red,0.05);
+      pAdd(D,gBox,gx+s*0.5,y0+0.62,R.z+k*0.92,1.0,1.2,0.012,net,0); });
+    pAdd(D,gCyl16,gx,y0+1.22,R.z,0.03,1.86,0.03,red,0.05,0,Math.PI/2); pAdd(D,gBox,bx,y0+0.02,R.z,0.05,0.04,1.88,red,0.05);
+    pAdd(D,gBox,gx+s*0.35,y0+1.2,R.z,0.7,0.012,1.83,net,0); pAdd(D,gBox,gx+s*0.85,y0+0.6,R.z,0.012,L,1.83,net,0,0,0,s*ang); });
+  pAdd(D,gCyl16,R.x,y0+0.0125,R.z,0.065,0.025,0.065,C(0x101012),7);
+  const m=new THREE.Mesh(pGeo(D),rkKitMat); m.name='rinkKit'; m.visible=false; scene.add(m); return m; })();
+// the ice resurfacer (generic; no brand): white body with a teal stripe and snow tank, open driver seat at the front left, headlights,
+// tail lamps, conditioner box at the back with a towel dragging on the ice, rotating amber beacon. Local +z forward, y=0 on the ice.
+const rinkMach=(()=>{ const D=pBuf(), wh=C(0xe6eaec), tl=C(0x1f8a96), dk=C(0x262a30), bl=C(0x141619), gr=C(0x3a4048);
+  pAdd(D,gBox,0,0.62,0.05,2.05,0.72,3.7,wh,0); pAdd(D,gBox,0,0.2,0.05,2.09,0.2,3.76,dk,0); pAdd(D,gBox,0,0.83,0.05,2.07,0.1,3.72,tl,0);
+  pAdd(D,gBox,-0.05,1.42,-0.5,1.95,0.95,2.45,tl,0); pAdd(D,gBox,-0.05,1.92,-0.5,1.85,0.06,2.35,wh,0);
+  pAdd(D,gBox,-0.45,1.18,1.15,1.0,0.4,1.3,wh,0);
+  pAdd(D,gBox,0.5,1.06,1.0,0.6,0.12,0.55,bl,0); pAdd(D,gBox,0.5,1.4,0.72,0.6,0.6,0.1,bl,0);
+  pAdd(D,gCyl16,0.5,1.28,1.5,0.03,0.5,0.03,dk,0,0,-0.45); pAdd(D,gWheel,0.5,1.5,1.4,0.18,0.18,0.18,bl,0,0,Math.PI/2-0.5);
+  [-0.72,0.72].forEach(x=>pAdd(D,gBox,x,0.7,1.92,0.28,0.14,0.04,C(0xfff2d8),0.82));
+  [-0.85,0.85].forEach(x=>pAdd(D,gBox,x,0.72,-1.82,0.16,0.1,0.04,C(0xff3a2a),0.6));
+  [[-1.03,1.15],[1.03,1.15],[-1.03,-1.05],[1.03,-1.05]].forEach(([x,z])=>pAdd(D,gCyl16,x,0.32,z,0.32,0.2,0.32,bl,0,0,0,Math.PI/2));
+  pAdd(D,gBox,0,0.32,-2.2,2.3,0.42,0.5,gr,0); [-0.7,0.7].forEach(x=>pAdd(D,gBox,x,0.42,-1.9,0.12,0.12,0.4,dk,0));
+  pAdd(D,gBox,0,0.012,-2.9,2.2,0.02,0.9,C(0x8fa9bb),0);
+  pAdd(D,gCyl16,0,2.06,0.55,0.04,0.24,0.04,dk,0); pAdd(D,gCyl16,0,2.26,0.55,0.11,0.16,0.11,C(0xffa21f),5);
+  const m=new THREE.Mesh(pGeo(D),rkKitMat); m.name='rinkMachine'; m.castShadow=!isMobile; m.receiveShadow=true; m.visible=false; scene.add(m); return m; })();
+// resurfacer route: out of the rink-house door, through the gate, then six overlapping laps (2.05 m conditioner, 1.85 m apart) that
+// work inward from the boards, each starting a little further along the south side; back out the same way. 6.2 m/s on the ice.
+const RKZ=(()=>{ const R=RINK, X=[], Z=[], push=(x,z)=>{ X.push(x); Z.push(z); };
+  push(R.x,403.2); push(RK_DOOR[0],RK_DOOR[1]); push(RK_GO[0],RK_GO[1]); push(RK_GI[0],RK_GI[1]);
+  for(let k=0;k<6;k++){ const d=1.0+1.85*k, P=rinkLane(d), n=P.x.length-1, zs=R.z-R.hz+d, near=(x,z)=>{ let b=1e9, j=0; for(let i=0;i<n;i++){ const q=Math.hypot(P.x[i]-x,P.z[i]-z); if(q<b){ b=q; j=i; } } return j; };
+    const i0=near(R.x,zs), dir=Math.sign(P.x[(i0+1)%n]-P.x[i0])||1, i1=near(R.x+dir*2.6*(k+1),zs);
+    for(let j=0;j<=n;j++){ const i=(i1+j)%n; push(P.x[i],P.z[i]); } }
+  push(RK_GI[0],RK_GI[1]); push(RK_GO[0],RK_GO[1]); push(RK_DOOR[0],RK_DOOR[1]); push(R.x,403.2);
+  const L=[0], T=[0]; for(let i=1;i<X.length;i++){ const l=Math.hypot(X[i]-X[i-1],Z[i]-Z[i-1]), on=rkSD(X[i],Z[i])<-0.3&&rkSD(X[i-1],Z[i-1])<-0.3; L.push(L[i-1]+l); T.push(T[i-1]+l/(on?6.2:2.2)); }
+  return {X,Z,L,T,len:L[L.length-1],dur:T[T.length-1]}; })();
+RKS.mEnd=RKS.MS+RKZ.dur;
+function rkZAt(s,o){ const P=RKZ; s=Math.max(0,Math.min(P.len,s)); let lo=0, hi=P.L.length-1; while(hi-lo>1){ const m=(lo+hi)>>1; if(P.L[m]<=s) lo=m; else hi=m; }
+  const f=(s-P.L[lo])/((P.L[hi]-P.L[lo])||1); o.x=P.X[lo]+(P.X[hi]-P.X[lo])*f; o.z=P.Z[lo]+(P.Z[hi]-P.Z[lo])*f; return o; }
+function rkZS(tm){ const P=RKZ; tm=Math.max(0,Math.min(P.dur,tm)); let lo=0, hi=P.T.length-1; while(hi-lo>1){ const m=(lo+hi)>>1; if(P.T[m]<=tm) lo=m; else hi=m; }
+  return P.L[lo]+(P.L[hi]-P.L[lo])*((tm-P.T[lo])/((P.T[hi]-P.T[lo])||1)); }
+const RKZa={x:0,z:0}, RKZb={x:0,z:0}, RKZc={x:0,z:0};
+function rinkMachine(step,t,A){ const res=RKS.sess===1||RKS.sess===3, tm=RKS.tt-RKS.MS, on=res&&tm>=0&&tm<=RKZ.dur;
+  rinkMach.visible=on&&!RKS.far; if(!on){ A.fill(0,RKDRV.i*16,RKDRV.i*16+16); RKS.condPrev=null; return; }
+  const s=rkZS(tm); rkZAt(s,RKZa); rkZAt(s+1.4,RKZb); rkZAt(s-1.4,RKZc); const yaw=Math.atan2(RKZb.x-RKZc.x,RKZb.z-RKZc.z), cy=Math.cos(yaw), sy=Math.sin(yaw);
+  rinkMach.position.set(RKZa.x,PG+0.08,RKZa.z); rinkMach.rotation.y=yaw;
+  pmR(A,RKDRV.i,RKZa.x+cy*0.5+sy*1.0,PG+0.08+1.12,RKZa.z-sy*0.5+cy*1.0,yaw,0,1);
+  rkZAt(s-2.3,RKZb); RKS.condNow=[RKZb.x,RKZb.z]; } // the conditioner, 2.3 m behind the axle centre, wipes the ice on the next mark tick
+// mark tick: dry the water, wipe under the conditioner, add blade lines for everyone skating, hockey stop sprays; upload only when near
+function rkStroke(a,t){ if(a.mx!==undefined&&rkSD(a.x,a.z)<-0.1) RKMK.blade(a.mx,a.mz,a.x,a.z,0.22*Math.sin(t*(a.rate||2)+a.ph)); a.mx=a.x; a.mz=a.z; }
+function rinkMarks(step,t){ const K=RKMK; RKS.mk+=step; const TK=isMobile?0.4:0.25; if(RKS.mk<TK) return; const dt=RKS.mk; RKS.mk=0;
+  if(K.wet>0){ K.dry(Math.exp(-dt/6)); K.wet-=dt; }
+  const c=RKS.condNow, p=RKS.condPrev; if(c){ if(p&&rkSD(c[0],c[1])<0.2&&rkSD(p[0],p[1])<0.2) K.clean(p[0],p[1],c[0],c[1],2.05,1); RKS.condPrev=c; RKS.condNow=null; }
+  K.begin(0.16); for(const a of RKPUB){ if(a.st===0||a.st===1||a.st===5) rkStroke(a,t); else a.mx=undefined; } K.end();
+  K.begin(0.22); for(const a of RKH){ if(a.st===3||a.st===4) rkStroke(a,t); else a.mx=undefined; } K.end();
+  RKS.sprays.forEach(s=>K.spray(s[0],s[1],s[2],s[3])); RKS.sprays.length=0;
+  if(!RKS.far) K.flush(); }
+// session sign on the cafe roof: canvas texture, redrawn only when the text changes (score included)
+const rinkSign=(()=>{ const W=isMobile?256:512, cv=document.createElement('canvas'); cv.width=W; cv.height=W/4; const tex=new THREE.CanvasTexture(cv); tex.anisotropy=4;
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(6,1.5),new THREE.MeshBasicMaterial({map:tex,color:new THREE.Color(0.86,0.86,0.86)}));
+  m.position.set(RINK.x,PG+8.15,404.8); m.name='rinkSign'; m.userData={cv,tex}; scene.add(m); return m; })();
+function rinkSignDraw(txt){ const {cv,tex}=rinkSign.userData, g=cv.getContext('2d'), W=cv.width, H=cv.height, hk=txt.startsWith('HOCKEY');
+  g.fillStyle='#06101a'; g.fillRect(0,0,W,H); g.strokeStyle='#33485a'; g.lineWidth=W/100; g.strokeRect(W/80,W/80,W-W/40,H-W/40);
+  const fit=(s,w)=>{ let f=Math.round(H*0.62); do{ g.font='800 '+f+'px "Big Shoulders Display","Arial Narrow",Impact,sans-serif'; f-=2; }while(f>8&&g.measureText(s).width>w); };
+  g.textAlign='center'; g.textBaseline='middle';
+  if(hk&&!txt.includes('WARM')){ fit('HOCKEY',W*0.5); g.fillStyle='#ff5a52'; g.fillText('HOCKEY',W*0.32,H*0.54); g.fillStyle='#ffffff'; g.fillText(txt.slice(8),W*0.76,H*0.54); }
+  else { fit(txt,W*0.88); g.fillStyle=txt.startsWith('RES')?'#ffb347':hk?'#ff5a52':'#8ff0ff'; g.fillText(txt,W/2,H*0.54); }
+  tex.needsUpdate=true; }
+// debug hook for tools/shot.js: jump to a session and fast-forward its clock (0.1 s steps)
+window.__m2140rink={RKS,RKH,RKPUB,RKZ,RKMK,ff(sec){ for(let i=0;i<Math.ceil(sec/0.1);i++) updateRink(0.1,uTime.value+i*0.1); },
+  setSession(name,tt,o){ rkEnter({public:0,resurface:1,hockey:2,resurface2:3}[name]); this.ff(tt||0); if(o&&o.score){ RKS.score=o.score.slice(); RKS.sign=''; } return RKS.sign; }};
 let parkAcc=0;
 function updatePark(dt,t,frame){
   const L=cur.lamp; uPG.value=0.05+1.05*L; parkGrassMat.emissiveIntensity=0.7*L; parkPts.material.opacity=0.1+0.9*L;
